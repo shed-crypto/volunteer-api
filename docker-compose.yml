@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # ─── База даних PostgreSQL з розширенням PostGIS ───────────────────────────
+  postgres:
+    image: postgis/postgis:15-3.3
+    container_name: volunteer_help_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-volunteer}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-volunteer_pass}
+      POSTGRES_DB: ${DB_NAME:-volunteer_help}
+    ports:
+      - '${DB_PORT:-5432}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${DB_USER:-volunteer} -d ${DB_NAME:-volunteer_help}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Redis (для черги сповіщень та кешування JWT токенів) ─────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: volunteer_help_redis
+    restart: unless-stopped
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── API сервер (NestJS) ───────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: volunteer_help_api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-volunteer}
+      DB_PASSWORD: ${DB_PASSWORD:-volunteer_pass}
+      DB_NAME: ${DB_NAME:-volunteer_help}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-change_this_secret_in_production_minimum_32_chars}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change_this_refresh_secret_in_production}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-30d}
+      PORT: ${PORT:-3000}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    ports:
+      - '${PORT:-3000}:3000'
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: npm run start:dev
+
+volumes:
+  postgres_data:
+  redis_data:

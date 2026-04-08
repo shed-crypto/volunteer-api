@@ -1,0 +1,245 @@
+### Volunteer Help API — приклади запитів
+### Формат: REST Client (VS Code extension) / HTTPie
+
+@base = http://localhost:3000/api
+@token = YOUR_ACCESS_TOKEN_HERE
+
+# ══════════════════════════════════════════════════════════════
+# 1. АВТОРИЗАЦІЯ
+# ══════════════════════════════════════════════════════════════
+
+### Реєстрація
+POST {{base}}/auth/register
+Content-Type: application/json
+
+{
+  "email": "volunteer@test.ua",
+  "password": "TestPass123!",
+  "fullName": "Олексій Тестенко",
+  "systemRole": "volunteer"
+}
+
+### Вхід
+POST {{base}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "coordinator@volunteer.ua",
+  "password": "Password123!"
+}
+
+### Поточний користувач
+GET {{base}}/auth/me
+Authorization: Bearer {{token}}
+
+# ══════════════════════════════════════════════════════════════
+# 2. ЗАЯВКИ (REQUESTS / EPICS)
+# ══════════════════════════════════════════════════════════════
+
+### Створити критичну заявку (із прихованими координатами)
+POST {{base}}/requests
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Термінова евакуація родини з Херсонської обл.",
+  "description": "Потрібно вивезти 4 особи, є малолітні діти",
+  "category": "evacuation",
+  "urgency": "critical",
+  "requiredClearance": "local",
+  "latitude": 46.6354,
+  "longitude": 32.6169,
+  "isLocationHidden": false,
+  "deadline": "2024-12-31T18:00:00Z"
+}
+
+### Пошук заявок у радіусі 50 км від Києва
+GET {{base}}/requests?latitude=50.4501&longitude=30.5234&radiusKm=50&status=open
+Authorization: Bearer {{token}}
+
+### Пошук критичних медичних заявок
+GET {{base}}/requests?category=medical&urgency=critical
+Authorization: Bearer {{token}}
+
+### Повнотекстовий пошук
+GET {{base}}/requests?search=евакуація&status=open
+Authorization: Bearer {{token}}
+
+### Деталі заявки з підзадачами
+GET {{base}}/requests/REQUEST_UUID_HERE
+Authorization: Bearer {{token}}
+
+### Оновити статус заявки
+PATCH {{base}}/requests/REQUEST_UUID_HERE
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "status": "completed",
+  "reportUrls": ["https://example.com/photo1.jpg"]
+}
+
+# ══════════════════════════════════════════════════════════════
+# 3. ПІДЗАДАЧІ (TASKS / KANBAN)
+# ══════════════════════════════════════════════════════════════
+
+### Kanban-дошка заявки
+GET {{base}}/requests/REQUEST_UUID_HERE/tasks
+Authorization: Bearer {{token}}
+
+### Декомпозиція: створити підзадачу (координатор)
+POST {{base}}/requests/REQUEST_UUID_HERE/tasks
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "title": "Знайти вантажний автомобіль",
+  "description": "Потрібен транспорт на 4+ пасажирів із великим багажником",
+  "neededPeopleCount": 1,
+  "requiredRoles": ["Водій", "Мікроавтобус або більше"],
+  "priority": 3,
+  "deadline": "2024-12-30T12:00:00Z"
+}
+
+### Взяти підзадачу в роботу (волонтер)
+### ⚡ Ключовий сценарій: транзакція + перевірка поручителів + авточат
+POST {{base}}/tasks/TASK_UUID_HERE/assign
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "fulfilledRole": "Водій (мікроавтобус Toyota)"
+}
+
+### Завершити підзадачу (волонтер)
+PATCH {{base}}/tasks/TASK_UUID_HERE/complete
+Authorization: Bearer {{token}}
+
+### Відмовитися від підзадачі
+DELETE {{base}}/tasks/TASK_UUID_HERE/assign
+Authorization: Bearer {{token}}
+
+### Делегувати задачу іншій організації (координатор)
+POST {{base}}/tasks/TASK_UUID_HERE/delegate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "organizationId": "ORG_UUID_HERE",
+  "message": "Ваша організація має ресурси для виконання цього завдання"
+}
+
+# ══════════════════════════════════════════════════════════════
+# 4. ОРГАНІЗАЦІЇ
+# ══════════════════════════════════════════════════════════════
+
+### Створити організацію
+POST {{base}}/organizations
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Волонтерський Центр 'Схід'",
+  "description": "Координація допомоги Харківській та Донецькій областям"
+}
+
+### Створити підгрупу
+POST {{base}}/organizations
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Медична бригада 'Схід'",
+  "description": "Підрозділ медичної допомоги",
+  "parentOrgId": "PARENT_ORG_UUID"
+}
+
+### Дерево всіх організацій
+GET {{base}}/organizations
+Authorization: Bearer {{token}}
+
+### Додати учасника
+POST {{base}}/organizations/ORG_UUID/members
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "userId": "USER_UUID",
+  "role": "member"
+}
+
+### Додати склад/хаб
+POST {{base}}/organizations/ORG_UUID/hubs
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Склад #3, вул. Героїв",
+  "address": "м. Харків, вул. Героїв, 15",
+  "latitude": 49.9935,
+  "longitude": 36.2304
+}
+
+# ══════════════════════════════════════════════════════════════
+# 5. СИСТЕМА ПОРУЧИТЕЛІВ (FR-02)
+# ══════════════════════════════════════════════════════════════
+
+### Поручитися за волонтера (потрібен FRONTLINE clearance)
+POST {{base}}/users/VOUCHEE_UUID/vouch
+Authorization: Bearer {{token}}
+
+### Список поручителів користувача
+GET {{base}}/users/USER_UUID/vouches
+Authorization: Bearer {{token}}
+
+# ══════════════════════════════════════════════════════════════
+# 6. ЧАТ (REST — для history)
+# ══════════════════════════════════════════════════════════════
+
+### Всі мої чати
+GET {{base}}/chats
+Authorization: Bearer {{token}}
+
+### Відкрити/отримати приватний чат
+POST {{base}}/chats/direct
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "targetUserId": "OTHER_USER_UUID"
+}
+
+### Історія повідомлень (остання 50)
+GET {{base}}/chats/CHAT_UUID/messages?limit=50
+Authorization: Bearer {{token}}
+
+### Пагінація (повідомлення до конкретного)
+GET {{base}}/chats/CHAT_UUID/messages?limit=20&beforeId=MESSAGE_UUID
+Authorization: Bearer {{token}}
+
+### Позначити чат як прочитаний
+POST {{base}}/chats/CHAT_UUID/read
+Authorization: Bearer {{token}}
+
+# ══════════════════════════════════════════════════════════════
+# 7. WEBSOCKET (Socket.IO приклад)
+# ══════════════════════════════════════════════════════════════
+#
+# const socket = io('http://localhost:3000/chat', {
+#   auth: { token: 'YOUR_ACCESS_TOKEN' }
+# });
+#
+# // Надіслати повідомлення
+# socket.emit('send_message', {
+#   chatId: 'CHAT_UUID',
+#   content: 'Привіт! Я водій, буду о 15:00.'
+# });
+#
+# // Слухати нові повідомлення
+# socket.on('new_message', (msg) => {
+#   console.log(`${msg.senderName}: ${msg.content}`);
+# });
+#
+# // Показати "друкує..."
+# socket.emit('typing', { chatId: 'CHAT_UUID', isTyping: true });
+# socket.on('user_typing', ({ name, isTyping }) => { ... });

@@ -1,0 +1,70 @@
+import {
+  IsString, IsOptional, IsEnum, IsBoolean,
+  IsNumber, IsUrl, Min, Max, IsDateString,
+  MinLength, MaxLength,
+} from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
+import {
+  RequestCategory, RequestUrgency,
+  ClearanceLevel,
+} from '@common/enums';
+
+export class CreateRequestDto {
+  @ApiProperty({ example: 'Потрібна евакуація родини з Херсонської області' })
+  @IsString()
+  @MinLength(5)
+  @MaxLength(500)
+  title: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @ApiPropertyOptional({ enum: RequestCategory })
+  @IsOptional()
+  @IsEnum(RequestCategory)
+  category?: RequestCategory;
+
+  @ApiPropertyOptional({ enum: RequestUrgency })
+  @IsOptional()
+  @IsEnum(RequestUrgency)
+  urgency?: RequestUrgency;
+
+  @ApiPropertyOptional({ enum: ClearanceLevel })
+  @IsOptional()
+  @IsEnum(ClearanceLevel)
+  requiredClearance?: ClearanceLevel;
+
+  @ApiPropertyOptional({ example: 48.4647 })
+  @IsOptional()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
+  @Type(() => Number)
+  latitude?: number;
+
+  @ApiPropertyOptional({ example: 35.0462 })
+  @IsOptional()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
+  @Type(() => Number)
+  longitude?: number;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  isLocationHidden?: boolean;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsDateString()
+  deadline?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsUrl()
+  fundraisingUrl?: string;
+}
