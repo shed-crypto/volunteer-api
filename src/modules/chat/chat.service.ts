@@ -73,6 +73,25 @@ export class ChatService {
     return messages.reverse(); // хронологічний порядок
   }
 
+  /** Надіслати нове повідомлення в чат */
+  async sendMessage(
+    chatId: string,
+    user: User,
+    dto: { content: string; attachmentUrl?: string; messageType?: string },
+  ): Promise<Message> {
+    await this.ensureParticipant(chatId, user.id);
+
+    const message = this.messageRepo.create({
+      chatId,
+      senderId: user.id,
+      content: dto.content,
+      attachmentUrl: dto.attachmentUrl || null,
+      messageType: dto.messageType || 'text',
+    });
+
+    return this.messageRepo.save(message);
+  }
+
   /** Позначити повідомлення як прочитані */
   async markAsRead(chatId: string, user: User): Promise<void> {
     await this.ensureParticipant(chatId, user.id);
