@@ -26,13 +26,22 @@ export class UsersController {
     return this.usersService.findAll();
   }
 
+  // ─── Адмін-панель: повний список з vouchCount, isBlocked, isEmailVerified ─
+  // Виправляє: AdminScreen.tsx викликав /admin/users (не існував).
+  // Тепер AdminScreen викликає GET /users/admin-list (тільки ADMIN).
+  @Get('admin-list')
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.ADMIN)
+  @ApiOperation({ summary: 'Повний список для адмін-панелі (з vouchCount, isBlocked)' })
+  findAllForAdmin(@CurrentUser() admin: User): Promise<any[]> {
+    return this.usersService.findAllForAdmin();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Профіль користувача' })
   findOne(@Param('id', ParseUUIDPipe) id: string): Promise<User> {
     return this.usersService.findById(id);
   }
-
-  // ─── Редагування профілю (FR-01e) ────────────────────────────────────────
 
   @Patch(':id')
   @ApiOperation({ summary: 'Оновити профіль користувача (власний або Admin)' })
@@ -43,6 +52,10 @@ export class UsersController {
   ): Promise<User> {
     return this.usersService.updateProfile(id, dto, currentUser);
   }
+
+  // ─── Блокування / Розблокування (FR-02e) ──────────────────────────────────
+  // Виправляє: AdminScreen викликав POST /admin/users/:id/block (не існував).
+  // Тепер AdminScreen використовує PATCH /users/:id/block та PATCH /users/:id/unblock.
 
   @Patch(':id/block')
   @UseGuards(RolesGuard)
@@ -55,11 +68,42 @@ export class UsersController {
     return this.usersService.blockUser(id, admin);
   }
 
+  @Patch(':id/unblock')
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.ADMIN)
+  @ApiOperation({ summary: 'Розблокувати користувача (Admin)' })
+  unblock(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() admin: User,
+  ): Promise<void> {
+    return this.usersService.unblockUser(id, admin);
+  }
+
+  // ─── Зміна системної ролі (Admin → Coordinator / Volunteer) ──────────────
+  // Вирішує питання: "хто робить волонтера координатором?"
+  // Відповідь: тільки Admin через цей endpoint.
+  // AdminScreen має кнопку "Змінити роль" яка кличе PATCH /users/:id/role.
+
+  @Patch(':id/role')
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.ADMIN)
+  @ApiOperation({
+    summary: 'Змінити системну роль користувача (Admin → Coordinator / Volunteer / Requester)',
+    description: 'Єдиний спосіб підвищити волонтера до координатора. Координатор отримує права: створювати підзадачі, делегувати, переглядати всіх юзерів.',
+  })
+  changeRole(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { systemRole: SystemRole },
+    @CurrentUser() admin: User,
+  ): Promise<User> {
+    return this.usersService.changeRole(id, body.systemRole, admin);
+  }
+
   // ─── Система Поручителів ──────────────────────────────────────────────────
 
   @Post(':id/vouch')
   @ApiOperation({
-    summary: 'Поручитися за користувача (підвищення рівня допуску)',
+    summary: 'Поручитися за користувача (тільки FRONTLINE волонтери або Admin)',
   })
   vouch(
     @Param('id', ParseUUIDPipe) voucheeId: string,
@@ -69,7 +113,7 @@ export class UsersController {
   }
 
   @Get(':id/vouches')
-  @ApiOperation({ summary: 'Список поручителів користувача' })
+  @ApiOperation({ summary: 'Список поручителів користувача (vouches received)' })
   getVouches(
     @Param('id', ParseUUIDPipe) userId: string,
   ): Promise<TrustVouch[]> {

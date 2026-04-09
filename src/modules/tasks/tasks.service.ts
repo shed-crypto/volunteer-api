@@ -50,8 +50,6 @@ export class TasksService {
     @Optional() private readonly chatGateway?: ChatGateway,
   ) {}
 
-  // ─── Kanban: Отримати всі задачі по заявці ───────────────────────────────
-
   async findByRequest(requestId: string, user: User): Promise<Task[]> {
     return this.taskRepository.find({
       where: { requestId },
@@ -69,8 +67,6 @@ export class TasksService {
     return task;
   }
 
-  // ─── Створити підзадачу (декомпозиція) ───────────────────────────────────
-
   async create(requestId: string, dto: CreateTaskDto, creator: User): Promise<Task> {
     const request = await this.requestRepository.findOne({ where: { id: requestId } });
     if (!request) throw new NotFoundException('Заявку не знайдено');
@@ -87,15 +83,18 @@ export class TasksService {
     return this.taskRepository.save(task);
   }
 
-  // ─── Взяти задачу в роботу ───────────────────────────────────────────────
+  // ─── Взяти задачу в роботу ────────────────────────────────────────────────
   //
-  // БАГ-ФІКс: TypeORM з lock: { mode: 'pessimistic_write' } разом із
-  // relations: ['request'] генерує LEFT JOIN + FOR UPDATE, що PostgreSQL
-  // забороняє для nullable-сторони join-у.
+  // БАГ-ФІКс 1: UPSERT — якщо є withdrawn запис, UPDATE замість INSERT,
+  //   щоб не порушувати UNIQUE constraint (taskId, userId).
   //
-  // РІШЕННЯ: завантажуємо task ОКРЕМО (з блокуванням, без relations),
-  // потім request ОКРЕМО (без блокування). Блокування task-рядка достатньо
-  // для захисту від race condition при одночасному assign.
+  // БАГ-ФІКс 2: Використовуємо `new TaskAssignment()` + прямий property assignment
+  //   замість `manager.create(TaskAssignment, {...})` — це гарантує правильний
+  //   маппінг camelCase→snake_case колонок у контексті transaction manager.
+  //
+  // БАГ-ФІКс 3: neededPeopleCount — м'який ліміт, не жорстка блокування.
+  //   Якщо слоти заповнені але задача ще не DONE/CANCELLED — доєднатись можна.
+  //   Задача стає IN_PROGRESS при першому досягненні neededPeopleCount.
 
   async assignVolunteer(
     taskId: string,
@@ -104,28 +103,26 @@ export class TasksService {
   ): Promise<TaskAssignment> {
     return this.dataSource.transaction(async (manager) => {
 
-      // ─── Крок 1: Завантажити task з pessimistic lock (без relation-join-ів) ──
+      // Крок 1: task з pessimistic lock
       const task = await manager.findOne(Task, {
         where: { id: taskId },
         lock: { mode: 'pessimistic_write' },
       });
       if (!task) throw new NotFoundException('Підзадачу не знайдено');
 
-      // ─── Крок 1b: Завантажити assignments та request окремо ──────────────
       const [assignments, request] = await Promise.all([
         manager.find(TaskAssignment, { where: { taskId } }),
         manager.findOne(Request, { where: { id: task.requestId } }),
       ]);
       if (!request) throw new NotFoundException('Батьківську заявку не знайдено');
 
-      // Прикріпляємо завантажені дані до task (для приватних методів нижче)
       task.assignments = assignments;
       task.request     = request;
 
-      // ─── Крок 2: Перевірка рівня допуску ─────────────────────────────────
+      // Крок 2: перевірка допуску
       this.checkClearanceAccess(request.requiredClearance, volunteer);
 
-      // ─── Крок 3: Перевірка поручителів для Frontline (FR-02) ─────────────
+      // Крок 3: Frontline — перевірка поручителів
       if (request.requiredClearance === ClearanceLevel.FRONTLINE) {
         const vouchCount = await manager.count(TrustVouch, {
           where: { voucheeId: volunteer.id },
@@ -133,50 +130,61 @@ export class TasksService {
         if (vouchCount < FRONTLINE_VOUCHES_REQUIRED) {
           throw new ForbiddenException(
             `Для цього завдання потрібно ${FRONTLINE_VOUCHES_REQUIRED} поручителі. ` +
-            `У вас: ${vouchCount}. Зверніться до верифікованих учасників.`,
+            `У вас: ${vouchCount}.`,
           );
         }
       }
 
-      // ─── Крок 4: Перевірка слотів (FR-06) ────────────────────────────────
       const activeAssignments = assignments.filter(
         (a) => a.status !== AssignmentStatus.WITHDRAWN,
       );
-      if (activeAssignments.length >= task.neededPeopleCount) {
-        throw new BadRequestException(
-          `Усі слоти (${task.neededPeopleCount}) вже заповнені`,
-        );
+
+      // Крок 4: БАГ-ФІКс — м'який ліміт.
+      // Якщо задача вже DONE або CANCELLED — не можна взяти.
+      // Якщо слоти переповнені але задача IN_PROGRESS — дозволяємо (волонтер може помогти).
+      if (task.status === TaskStatus.DONE || task.status === TaskStatus.CANCELLED) {
+        throw new BadRequestException('Задачу вже завершено або скасовано');
       }
 
-      // ─── Перевірка дублювання ─────────────────────────────────────────────
+      // Крок 5: UPSERT (перевіряємо existing record)
       const existing = await manager.findOne(TaskAssignment, {
         where: { taskId, userId: volunteer.id },
       });
-      if (existing && existing.status !== AssignmentStatus.WITHDRAWN) {
-        throw new ConflictException('Ви вже призначені на цю підзадачу');
-      }
 
-      // ─── Крок 5: Створити призначення ─────────────────────────────────────
-      const assignment = manager.create(TaskAssignment, {
-        taskId,
-        userId: volunteer.id,
-        fulfilledRole: dto.fulfilledRole,
-        status: AssignmentStatus.ASSIGNED,
-      });
-      await manager.save(assignment);
+      let assignment: TaskAssignment;
+
+      if (existing) {
+        if (existing.status !== AssignmentStatus.WITHDRAWN) {
+          throw new ConflictException('Ви вже призначені на цю підзадачу');
+        }
+        // БАГ-ФІКс: UPDATE withdrawn → ASSIGNED (не CREATE новий рядок)
+        existing.status       = AssignmentStatus.ASSIGNED;
+        existing.fulfilledRole = dto.fulfilledRole ?? existing.fulfilledRole;
+        existing.assignedAt   = new Date();
+        (existing as any).completedAt = null;
+        assignment = await manager.save(TaskAssignment, existing);
+      } else {
+        // БАГ-ФІКс: `new Entity()` + прямий assignment замість manager.create({})
+        // щоб TypeORM коректно маппив taskId → task_id колонку
+        const newAssignment = new TaskAssignment();
+        newAssignment.taskId       = taskId;
+        newAssignment.userId       = volunteer.id;
+        newAssignment.fulfilledRole = dto.fulfilledRole ?? (null as any);
+        newAssignment.status       = AssignmentStatus.ASSIGNED;
+        newAssignment.assignedAt   = new Date();
+        assignment = await manager.save(TaskAssignment, newAssignment);
+      }
 
       const newActiveCount = activeAssignments.length + 1;
       const isNowFull = newActiveCount >= task.neededPeopleCount;
 
-      // ─── Кроки 6–7: Змінити статус та створити чат ────────────────────────
+      // Перший раз досягли neededPeopleCount → IN_PROGRESS + чат
       if (isNowFull && task.status === TaskStatus.TODO) {
         task.status = TaskStatus.IN_PROGRESS;
         const chat = await this.createTaskChat(manager, task, request, volunteer);
         task.chatId = chat.id;
-        await manager.save(task);
+        await manager.save(Task, task);
 
-        // FR-10d: сповістити всіх учасників через WS щоб підписались
-        // на нову кімнату без реконнекту (new_chat_joined event)
         setImmediate(() => {
           const participantIds = [
             request.creatorId,
@@ -191,14 +199,12 @@ export class TasksService {
         });
       }
 
-      // ─── Крок 8: Оновити батьківську заявку ──────────────────────────────
       if (request.status === RequestStatus.OPEN) {
         await manager.update(Request, request.id, {
           status: RequestStatus.IN_PROGRESS,
         });
       }
 
-      // ─── Async notifications (не блокуємо транзакцію) ────────────────────
       setImmediate(() => {
         this.notificationsService
           .notifyVolunteerAssigned(volunteer.id, task.title, request.title)
@@ -211,8 +217,6 @@ export class TasksService {
       return assignment;
     });
   }
-
-  // ─── Відмовитися від задачі ───────────────────────────────────────────────
 
   async withdrawAssignment(taskId: string, volunteer: User): Promise<void> {
     const assignment = await this.assignmentRepository.findOne({
@@ -233,14 +237,9 @@ export class TasksService {
       where: { taskId, status: AssignmentStatus.ASSIGNED },
     });
     if (remaining === 0) {
-      await this.taskRepository.update(taskId, {
-        status: TaskStatus.TODO,
-        chatId: null,
-      });
+      await this.taskRepository.update(taskId, { status: TaskStatus.TODO, chatId: null });
     }
   }
-
-  // ─── Завершити задачу ─────────────────────────────────────────────────────
 
   async completeTask(taskId: string, user: User): Promise<Task> {
     const task = await this.taskRepository.findOne({
@@ -261,16 +260,13 @@ export class TasksService {
     return this.taskRepository.save(task);
   }
 
-  // ─── Підтвердити завершення задачі (автор заявки) ────────────────────────
-
   async confirmTaskCompletion(taskId: string, requester: User): Promise<Task> {
     const task = await this.taskRepository.findOne({
       where: { id: taskId },
       relations: ['request', 'assignments'],
     });
     if (!task) throw new NotFoundException('Підзадачу не знайдено');
-    if (task.request.creatorId !== requester.id &&
-        requester.systemRole !== SystemRole.ADMIN) {
+    if (task.request.creatorId !== requester.id && requester.systemRole !== SystemRole.ADMIN) {
       throw new ForbiddenException('Лише автор заявки може підтвердити виконання');
     }
     if (task.status !== TaskStatus.PENDING_REVIEW) {
@@ -278,19 +274,14 @@ export class TasksService {
     }
 
     task.status = TaskStatus.DONE;
-
     await this.assignmentRepository.update(
       { taskId, status: AssignmentStatus.ASSIGNED },
       { status: AssignmentStatus.COMPLETED, completedAt: new Date() },
     );
-
     await this.boostVolunteerScores(task.assignments.map((a) => a.userId));
     await this.checkRequestCompletion(task.requestId);
-
     return this.taskRepository.save(task);
   }
-
-  // ─── Відхилити виконання (FR-09d): PENDING_REVIEW → IN_PROGRESS ─────────
 
   async rejectTask(taskId: string, requester: User, reason?: string): Promise<Task> {
     const task = await this.taskRepository.findOne({
@@ -306,16 +297,12 @@ export class TasksService {
     }
 
     task.status = TaskStatus.IN_PROGRESS;
-
     await this.assignmentRepository.update(
       { taskId, status: AssignmentStatus.COMPLETED },
       { status: AssignmentStatus.ASSIGNED, completedAt: undefined as any },
     );
-
     return this.taskRepository.save(task);
   }
-
-  // ─── Оновити статус призначення EN_ROUTE / ON_SITE (FR-06e) ──────────────
 
   async updateAssignmentStatus(
     taskId: string,
@@ -339,21 +326,15 @@ export class TasksService {
     return this.assignmentRepository.save(assignment);
   }
 
-  // ─── Делегувати підзадачу іншій організації (FR-04) ──────────────────────
-
   async delegateTask(
     taskId: string,
     dto: DelegateTaskDto,
     coordinator: User,
   ): Promise<TaskDelegation> {
-    const task = await this.taskRepository.findOne({
-      where: { id: taskId },
-      relations: ['request'],
-    });
+    const task = await this.taskRepository.findOne({ where: { id: taskId }, relations: ['request'] });
     if (!task) throw new NotFoundException('Підзадачу не знайдено');
 
-    if (coordinator.systemRole !== SystemRole.COORDINATOR &&
-        coordinator.systemRole !== SystemRole.ADMIN) {
+    if (coordinator.systemRole !== SystemRole.COORDINATOR && coordinator.systemRole !== SystemRole.ADMIN) {
       throw new ForbiddenException('Лише координатор може делегувати задачі');
     }
 
@@ -368,14 +349,12 @@ export class TasksService {
 
     setImmediate(() => {
       this.notificationsService
-        .notifyDelegation(dto.organizationId, task.title, 'Невідома організація')
+        .notifyDelegation(dto.organizationId, task.title, '')
         .catch(() => {});
     });
 
     return delegation;
   }
-
-  // ─── Приватні методи ──────────────────────────────────────────────────────
 
   private checkClearanceAccess(required: ClearanceLevel, user: User): void {
     const ranks: Record<ClearanceLevel, number> = {
@@ -384,18 +363,11 @@ export class TasksService {
       [ClearanceLevel.FRONTLINE]: 2,
     };
     if ((ranks[user.clearanceLevel] ?? 0) < (ranks[required] ?? 0)) {
-      throw new ForbiddenException(
-        `Для цього завдання потрібен рівень допуску: ${required}`,
-      );
+      throw new ForbiddenException(`Потрібен рівень допуску: ${required}`);
     }
   }
 
-  private async createTaskChat(
-    manager: any,
-    task: Task,
-    request: Request,
-    newVolunteer: User,
-  ): Promise<Chat> {
+  private async createTaskChat(manager: any, task: Task, request: Request, newVolunteer: User): Promise<Chat> {
     const participantIds = new Set<string>([request.creatorId]);
     task.assignments
       .filter((a) => a.status !== AssignmentStatus.WITHDRAWN)
@@ -403,14 +375,12 @@ export class TasksService {
     participantIds.add(newVolunteer.id);
 
     const participants = Array.from(participantIds).map((id) => ({ id } as User));
-
     const chat = manager.create(Chat, {
       type: ChatType.TASK_CHAT,
       relatedRequestId: request.id,
       name: `Задача: ${task.title}`,
       participants,
     });
-
     return manager.save(chat);
   }
 
@@ -419,9 +389,7 @@ export class TasksService {
     await this.dataSource
       .createQueryBuilder()
       .update('users')
-      .set({
-        trust_score: () => 'LEAST(trust_score + 5, 100)',
-      } as any)
+      .set({ trust_score: () => 'LEAST(trust_score + 5, 100)' } as any)
       .where('id IN (:...ids)', { ids: userIds })
       .execute();
   }
@@ -431,11 +399,8 @@ export class TasksService {
       this.taskRepository.count({ where: { requestId } }),
       this.taskRepository.count({ where: { requestId, status: TaskStatus.DONE } }),
     ]);
-
     if (total > 0 && total === done) {
-      await this.requestRepository.update(requestId, {
-        status: RequestStatus.COMPLETED,
-      });
+      await this.requestRepository.update(requestId, { status: RequestStatus.COMPLETED });
     }
   }
 }

@@ -2,10 +2,9 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
-  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, FindManyOptions, ILike } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Request } from './entities/request.entity';
 import { User } from '@modules/users/entities/user.entity';
 import {
@@ -23,11 +22,10 @@ const OBFUSCATION_RADIUS_M = parseInt(
   10,
 );
 
-/** Ключові слова для автоматичної категоризації (FR автокатегоризація) */
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   '#Медицина': ['медик', 'лікар', 'аптека', 'ліки', 'перев\'язка', 'медична'],
   '#Евакуація': ['евакуація', 'евакуювати', 'вивезти', 'виїхати', 'перевезти'],
-  '#Термінова': ['терміново', 'критично', 'негайно', 'srochno'],
+  '#Термінова': ['терміново', 'критично', 'негайно'],
   '#Продовольство': ['їжа', 'продукти', 'харчування', 'вода'],
   '#Логістика': ['доставка', 'перевезення', 'транспорт'],
   '#Військо': ['армія', 'зсу', 'підрозділ', 'бойовий', 'фронт'],
@@ -41,6 +39,11 @@ export class RequestsService {
   ) {}
 
   // ─── Створення заявки ─────────────────────────────────────────────────────
+  //
+  // БАГ-ФІКс: exactLocation (PostGIS geometry) ніколи не встановлювалось.
+  // TypeORM не вміє автоматично конвертувати latitude/longitude у PostGIS Point.
+  // Рішення: зберігаємо заявку, потім окремим raw-запитом встановлюємо exactLocation.
+  // Це потрібно щоб ST_DWithin геопошук на карті працював коректно.
 
   async create(dto: CreateRequestDto, creator: User): Promise<Request> {
     const tags = this.autoCategorizeTags(dto.title + ' ' + (dto.description || ''));
@@ -51,7 +54,20 @@ export class RequestsService {
       tags,
     });
 
-    return this.requestRepository.save(request);
+    const saved = await this.requestRepository.save(request);
+
+    // БАГ-ФІКс: встановити PostGIS поле exactLocation через raw SQL
+    // TypeORM не підтримує geometry insert безпосередньо через create()
+    if (dto.latitude != null && dto.longitude != null) {
+      await this.requestRepository.query(
+        `UPDATE requests
+         SET exact_location = ST_SetSRID(ST_MakePoint($1, $2), 4326)
+         WHERE id = $3`,
+        [dto.longitude, dto.latitude, saved.id],
+      );
+    }
+
+    return saved;
   }
 
   // ─── Список заявок ────────────────────────────────────────────────────────
@@ -63,22 +79,10 @@ export class RequestsService {
       .leftJoinAndSelect('request.tasks', 'tasks')
       .where('request.deleted_at IS NULL');
 
-    // Фільтр за статусом
-    if (dto.status) {
-      qb.andWhere('request.status = :status', { status: dto.status });
-    }
+    if (dto.status)   qb.andWhere('request.status = :status',     { status: dto.status });
+    if (dto.category) qb.andWhere('request.category = :category', { category: dto.category });
+    if (dto.urgency)  qb.andWhere('request.urgency = :urgency',   { urgency: dto.urgency });
 
-    // Фільтр за категорією
-    if (dto.category) {
-      qb.andWhere('request.category = :category', { category: dto.category });
-    }
-
-    // Фільтр за терміновістю
-    if (dto.urgency) {
-      qb.andWhere('request.urgency = :urgency', { urgency: dto.urgency });
-    }
-
-    // Повнотекстовий пошук
     if (dto.search) {
       qb.andWhere(
         '(request.title ILIKE :search OR request.description ILIKE :search)',
@@ -86,7 +90,7 @@ export class RequestsService {
       );
     }
 
-    // FR-08: приховуємо заявки з підвищеним рівнем допуску
+    // FR-08: фільтр за clearance
     const userClearanceRank = this.getClearanceRank(requester.clearanceLevel);
     if (requester.systemRole !== SystemRole.ADMIN) {
       qb.andWhere(
@@ -99,18 +103,18 @@ export class RequestsService {
       );
     }
 
-    // Геопошук у радіусі (PostGIS)
-    if (dto.latitude && dto.longitude && dto.radiusKm) {
+    // Геопошук — тільки якщо exact_location встановлено (не null)
+    if (dto.latitude != null && dto.longitude != null && dto.radiusKm) {
       const radiusM = dto.radiusKm * 1000;
       qb.andWhere(
-        `ST_DWithin(
-          request.exact_location::geography,
-          ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
-          :radius
-        )`,
+        `request.exact_location IS NOT NULL AND
+         ST_DWithin(
+           request.exact_location::geography,
+           ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
+           :radius
+         )`,
         { lat: dto.latitude, lng: dto.longitude, radius: radiusM },
       );
-      // Сортування за відстанню
       qb.orderBy(
         `ST_Distance(
           request.exact_location::geography,
@@ -125,8 +129,6 @@ export class RequestsService {
     qb.limit(dto.limit || 50).offset(dto.offset || 0);
 
     const requests = await qb.getMany();
-
-    // Обфускуємо координати для приихованих заявок (FR-08)
     return requests.map((r) => this.obfuscateLocation(r, requester));
   }
 
@@ -138,39 +140,46 @@ export class RequestsService {
       relations: ['creator', 'tasks', 'tasks.assignments', 'tasks.assignments.user'],
     });
 
-    if (!request) {
-      throw new NotFoundException(`Заявку ${id} не знайдено`);
-    }
+    if (!request) throw new NotFoundException(`Заявку ${id} не знайдено`);
 
     this.checkClearanceAccess(request, requester);
-
     return this.obfuscateLocation(request, requester);
   }
 
-  // ─── Оновлення статусу заявки ─────────────────────────────────────────────
+  // ─── Оновлення ────────────────────────────────────────────────────────────
 
   async update(id: string, dto: UpdateRequestDto, requester: User): Promise<Request> {
     const request = await this.requestRepository.findOne({ where: { id } });
     if (!request) throw new NotFoundException(`Заявку ${id} не знайдено`);
 
-    // Лише автор або адмін може оновлювати заявку
     if (request.creatorId !== requester.id && requester.systemRole !== SystemRole.ADMIN) {
       throw new ForbiddenException('Немає прав для редагування цієї заявки');
     }
 
     Object.assign(request, dto);
 
-    // Перерахуємо теги якщо текст змінився
     if (dto.title || dto.description) {
       request.tags = this.autoCategorizeTags(
         (dto.title || request.title) + ' ' + (dto.description || request.description || ''),
       );
     }
 
-    return this.requestRepository.save(request);
+    const saved = await this.requestRepository.save(request);
+
+    // Оновлення PostGIS точки якщо координати змінились
+    const lat = (dto as any).latitude ?? request.latitude;
+    const lng = (dto as any).longitude ?? request.longitude;
+    if (lat != null && lng != null) {
+      await this.requestRepository.query(
+        `UPDATE requests SET exact_location = ST_SetSRID(ST_MakePoint($1, $2), 4326) WHERE id = $3`,
+        [lng, lat, id],
+      );
+    }
+
+    return saved;
   }
 
-  // ─── Видалення (soft delete) ──────────────────────────────────────────────
+  // ─── Видалення ────────────────────────────────────────────────────────────
 
   async remove(id: string, requester: User): Promise<void> {
     const request = await this.requestRepository.findOne({ where: { id } });
@@ -183,12 +192,8 @@ export class RequestsService {
     await this.requestRepository.softDelete(id);
   }
 
-  // ─── Приватні допоміжні методи ─────────────────────────────────────────────
+  // ─── Приватні методи ──────────────────────────────────────────────────────
 
-  /**
-   * FR-08: Якщо заявка прихована і користувач ще не отримав доступ —
-   * замінюємо точні координати на обфусковані (зсуваємо випадково в радіусі N км).
-   */
   private obfuscateLocation(request: Request, user: User): Request {
     if (!request.isLocationHidden) return request;
 
@@ -198,10 +203,9 @@ export class RequestsService {
         this.getClearanceRank(request.requiredClearance);
 
     if (!hasAccess && request.latitude && request.longitude) {
-      // Псевдовипадковий зсув у межах радіусу обфускування
       const seed = parseInt(request.id.replace(/-/g, '').substring(0, 8), 16);
       const angle = (seed % 360) * (Math.PI / 180);
-      const distanceDeg = OBFUSCATION_RADIUS_M / 111320; // ~1 градус = 111.32 км
+      const distanceDeg = OBFUSCATION_RADIUS_M / 111320;
       request.latitude = parseFloat(
         (request.latitude + distanceDeg * Math.sin(angle)).toFixed(6),
       );
@@ -235,17 +239,12 @@ export class RequestsService {
     return ranks[level] ?? 0;
   }
 
-  /** Аналіз тексту для авто-тегування (FR — автоматична категоризація) */
   private autoCategorizeTags(text: string): string[] {
     const lowerText = text.toLowerCase();
     const tags: string[] = [];
-
     for (const [tag, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
-      if (keywords.some((kw) => lowerText.includes(kw))) {
-        tags.push(tag);
-      }
+      if (keywords.some((kw) => lowerText.includes(kw))) tags.push(tag);
     }
-
     return tags;
   }
 }

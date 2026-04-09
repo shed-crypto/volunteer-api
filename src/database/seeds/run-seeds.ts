@@ -8,6 +8,7 @@
  * - 1 потребуючого
  * - 1 організацію з підгрупою
  * - 2 заявки з підзадачами
+ * - Призначення волонтерів на підзадачі
  */
 
 import 'reflect-metadata';
@@ -31,11 +32,15 @@ async function seed() {
   await AppDataSource.initialize();
   console.log('✅ З\'єднання з БД встановлено');
 
+  //await AppDataSource.query('TRUNCATE TABLE "users", "organizations", "requests", "tasks", "task_assignments" RESTART IDENTITY CASCADE');
+  //console.log('🧹 База даних очищена');
+
   const userRepo = AppDataSource.getRepository('users');
   const orgRepo = AppDataSource.getRepository('organizations');
   const memberRepo = AppDataSource.getRepository('organization_members');
   const requestRepo = AppDataSource.getRepository('requests');
   const taskRepo = AppDataSource.getRepository('tasks');
+  const assignmentRepo = AppDataSource.getRepository('task_assignments');
 
   // ─── Користувачі ──────────────────────────────────────────────────────────
 
@@ -102,7 +107,7 @@ async function seed() {
 
   console.log('✅ Організацію та підгрупу створено');
 
-  // ─── Заявки та підзадачі ──────────────────────────────────────────────────
+  // ─── Заявки, підзадачі та призначення ─────────────────────────────────────
 
   const request1 = await requestRepo.save({
     creatorId: requester.id,
@@ -118,7 +123,8 @@ async function seed() {
     tags: ['#Евакуація', '#Термінова'],
   });
 
-  await taskRepo.save([
+  // Зберігаємо задачі у змінні, щоб отримати їхні ID
+  const [req1_task1, req1_task2] = await taskRepo.save([
     {
       requestId: request1.id,
       title: 'Знайти транспорт (мінімум мікроавтобус)',
@@ -138,6 +144,17 @@ async function seed() {
     },
   ]);
 
+  // Створюємо призначення для першої заявки.
+  // ВАЖЛИВО: Використовуємо taskId та userId, а не task_id/user_id!
+  await assignmentRepo.save([
+    {
+      taskId: req1_task1.id,
+      userId: volunteer1.id,
+      fulfilledRole: 'Водій',
+      status: 'assigned',
+    }
+  ]);
+
   const request2 = await requestRepo.save({
     creatorId: requester.id,
     title: 'Медикаменти для підрозділу ЗСУ',
@@ -152,7 +169,7 @@ async function seed() {
     tags: ['#Медицина', '#Військо'],
   });
 
-  await taskRepo.save({
+  const req2_task1 = await taskRepo.save({
     requestId: request2.id,
     title: 'Закупити та доставити медикаменти',
     neededPeopleCount: 2,
@@ -161,7 +178,15 @@ async function seed() {
     status: 'todo',
   });
 
-  console.log('✅ Заявки та підзадачі створено');
+  // Створюємо призначення для другої заявки
+  await assignmentRepo.save({
+    taskId: req2_task1.id,
+    userId: coord.id,
+    fulfilledRole: 'Медичний допуск',
+    status: 'assigned',
+  });
+
+  console.log('✅ Заявки, підзадачі та призначення створено');
 
   // ─── Підсумок ─────────────────────────────────────────────────────────────
 

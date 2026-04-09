@@ -31,7 +31,29 @@ export class UsersService {
   }
 
   async findAll(): Promise<User[]> {
-    return this.userRepo.find({ select: ['id', 'fullName', 'email', 'systemRole', 'clearanceLevel', 'trustScore'] });
+    return this.userRepo.find({
+      select: ['id', 'fullName', 'email', 'systemRole', 'clearanceLevel', 'trustScore'],
+    });
+  }
+
+  // ─── Повний список для адмін-панелі (з vouchCount, isBlocked, isEmailVerified) ──
+  async findAllForAdmin(): Promise<any[]> {
+    const users = await this.userRepo.find({
+      select: [
+        'id', 'fullName', 'email', 'systemRole',
+        'clearanceLevel', 'isBlocked', 'isEmailVerified', 'trustScore',
+      ],
+    });
+
+    // Додаємо кількість поручителів для кожного юзера
+    const result = await Promise.all(
+      users.map(async (u) => {
+        const vouchCount = await this.vouchRepo.count({ where: { voucheeId: u.id } });
+        return { ...u, vouchCount };
+      }),
+    );
+
+    return result;
   }
 
   async updateProfile(
@@ -57,6 +79,35 @@ export class UsersService {
     await this.userRepo.update(targetId, { isBlocked: true });
   }
 
+  // ─── Розблокування (FR-02e) ───────────────────────────────────────────────
+  async unblockUser(targetId: string, admin: User): Promise<void> {
+    if (admin.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException('Лише адміністратор може розблоковувати користувачів');
+    }
+    const user = await this.userRepo.findOne({ where: { id: targetId } });
+    if (!user) throw new NotFoundException('Користувача не знайдено');
+    await this.userRepo.update(targetId, { isBlocked: false });
+  }
+
+  // ─── Зміна системної ролі (Admin → Coordinator/Volunteer тощо) ───────────
+  // Вирішує питання підвищення Volunteer → Coordinator через адмін-панель.
+  async changeRole(targetId: string, newRole: SystemRole, admin: User): Promise<User> {
+    if (admin.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException('Лише адміністратор може змінювати ролі');
+    }
+    if (!Object.values(SystemRole).includes(newRole)) {
+      throw new BadRequestException(`Невідома роль: ${newRole}`);
+    }
+    const target = await this.userRepo.findOne({ where: { id: targetId } });
+    if (!target) throw new NotFoundException('Користувача не знайдено');
+    if (target.id === admin.id) {
+      throw new BadRequestException('Не можна змінити власну роль');
+    }
+
+    await this.userRepo.update(targetId, { systemRole: newRole });
+    return this.findById(targetId);
+  }
+
   // ─── Система Поручителів (FR-02) ──────────────────────────────────────────
 
   async vouchForUser(voucheeId: string, voucher: User): Promise<TrustVouch> {
@@ -67,13 +118,13 @@ export class UsersService {
     const vouchee = await this.userRepo.findOne({ where: { id: voucheeId } });
     if (!vouchee) throw new NotFoundException('Користувача не знайдено');
 
-    // Поручителем може бути лише волонтер із рівнем FRONTLINE або адмін
+    // Поручителем може бути волонтер з FRONTLINE або адмін
     if (
       voucher.clearanceLevel !== ClearanceLevel.FRONTLINE &&
       voucher.systemRole !== SystemRole.ADMIN
     ) {
       throw new ForbiddenException(
-        'Поручителем може бути лише верифікований волонтер (рівень FRONTLINE)',
+        'Поручителем може бути лише верифікований волонтер (рівень FRONTLINE) або адміністратор',
       );
     }
 
@@ -84,12 +135,8 @@ export class UsersService {
       throw new ConflictException('Ви вже надали поручительство цьому користувачу');
     }
 
-    const vouch = await this.vouchRepo.save({
-      voucheeId,
-      voucherId: voucher.id,
-    });
+    const vouch = await this.vouchRepo.save({ voucheeId, voucherId: voucher.id });
 
-    // Перевіряємо поріг — чи автоматично підвищити рівень допуску
     await this.checkAndUpgradeClearance(voucheeId);
 
     return vouch;
@@ -125,7 +172,6 @@ export class UsersService {
 
     if (!user) return;
 
-    // Авто-підвищення рівня допуску
     if (count >= FRONTLINE_VOUCHES_REQUIRED &&
         user.clearanceLevel !== ClearanceLevel.FRONTLINE) {
       await this.userRepo.update(userId, {
