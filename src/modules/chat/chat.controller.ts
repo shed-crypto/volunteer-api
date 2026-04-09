@@ -20,6 +20,22 @@ class CreateDirectChatDto {
   targetUserId: string;
 }
 
+class CreateMessageDto {
+  @ApiProperty({ description: 'Текст повідомлення' })
+  @IsString()
+  content: string;
+
+  @ApiPropertyOptional({ description: 'URL вкладення' })
+  @IsString()
+  @IsOptional()
+  attachmentUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Тип повідомлення' })
+  @IsString()
+  @IsOptional()
+  messageType?: string;
+}
+
 @ApiTags('Чати')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
@@ -53,6 +69,16 @@ export class ChatController {
     @CurrentUser() user: User,
   ): Promise<Message[]> {
     return this.chatService.getMessages(chatId, user, parseInt(limit || '50', 10), beforeId);
+  }
+
+  @Post(':chatId/messages')
+  @ApiOperation({ summary: 'Надіслати нове повідомлення в чат' })
+  sendMessage(
+    @Param('chatId', ParseUUIDPipe) chatId: string,
+    @Body() dto: CreateMessageDto,
+    @CurrentUser() user: User,
+  ): Promise<Message> {
+    return this.chatService.sendMessage(chatId, user, dto);
   }
 
   @Post(':chatId/read')
