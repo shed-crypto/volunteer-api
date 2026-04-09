@@ -92,22 +92,22 @@ export class ChatService {
     return this.messageRepo.save(message);
   }
 
-  /** Позначити повідомлення як прочитані */
-  async markAsRead(chatId: string, user: User): Promise<void> {
-    await this.ensureParticipant(chatId, user.id);
+    /** Позначити повідомлення як прочитані */
+    async markAsRead(chatId: string, user: User): Promise<void> {
+      await this.ensureParticipant(chatId, user.id);
 
-    await this.messageRepo
-      .createQueryBuilder()
-      .update(Message)
-      .set({
-        readBy: () => `array_append("read_by", '${user.id}')`,
-      })
-      .where('chat_id = :chatId AND NOT (:userId = ANY(read_by))', {
-        chatId,
-        userId: user.id,
-      })
-      .execute();
-  }
+      await this.messageRepo
+        .createQueryBuilder()
+        .update(Message)
+        .set({
+          readBy: () => `COALESCE("read_by", '{}') || '${user.id}'::text[]`,
+        })
+        .where('chat_id = :chatId AND (read_by IS NULL OR NOT (:userId = ANY(read_by)))', {
+          chatId,
+          userId: user.id,
+        })
+        .execute();
+    }
 
   private async ensureParticipant(chatId: string, userId: string): Promise<void> {
     const chat = await this.chatRepo
