@@ -192,8 +192,8 @@ export class TasksService {
       const newActiveCount = activeAssignments.length + 1;
       const isNowFull = newActiveCount >= task.neededPeopleCount;
 
-      // Перший раз досягли neededPeopleCount → IN_PROGRESS + чат
-      if (isNowFull && task.status === TaskStatus.TODO) {
+      // Якщо задача ще не в роботі, переводимо в IN_PROGRESS
+      if (task.status === TaskStatus.TODO) {
         task.status = TaskStatus.IN_PROGRESS;
         const chat = await this.createChatWithAssignments(manager, task, request, volunteer, assignments);
         task.chatId = chat.id;
@@ -210,6 +210,11 @@ export class TasksService {
           for (const uid of new Set(participantIds)) {
             this.chatGateway?.addParticipantToRoom(uid, chat.id, `Задача: ${task.title}`);
           }
+        });
+      } else if (task.chatId) {
+        // Якщо задача вже в роботі, додаємо нового волонтера в існуючий чат
+        setImmediate(() => {
+          this.chatGateway?.addParticipantToRoom(volunteer.id, task.chatId!, `Задача: ${task.title}`);
         });
       }
 
