@@ -12,7 +12,13 @@ export class TaskReportsService {
     private readonly reportRepository: Repository<TaskReport>,
   ) {}
 
-  async create(taskId: string, user: User, comment: string, attachments: any[]): Promise<TaskReport> {
+  async create(taskId: string, user: User, comment: string, files: any[]): Promise<TaskReport> {
+    const attachments = files.map((file) => ({
+      url: file.path || file.filename,
+      type: file.mimetype,
+      name: file.originalname,
+    }));
+
     const report = this.reportRepository.create({
       taskId,
       userId: user.id,
