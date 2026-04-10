@@ -116,7 +116,14 @@ export class TasksService {
       ]);
       if (!request) throw new NotFoundException('Батьківську заявку не знайдено');
 
-      task.assignments = assignments;
+      console.log(`Found ${assignments.length} existing assignments for taskId: ${taskId}`);
+      assignments.forEach((assignment, index) => {
+        console.log(`  Assignment ${index}: id=${assignment.id}, taskId=${assignment.taskId}, userId=${assignment.userId}, status=${assignment.status}`);
+        if (!assignment.taskId) {
+          console.error(`ERROR: Assignment ${index} has null/undefined taskId!`);
+        }
+      });
+
       task.request     = request;
 
       // Крок 2: перевірка допуску
@@ -166,12 +173,19 @@ export class TasksService {
       } else {
         // БАГ-ФІКс: `new Entity()` + прямий assignment замість manager.create({})
         // щоб TypeORM коректно маппив taskId → task_id колонку
+        if (!taskId) {
+          console.error('CRITICAL: Attempted to create TaskAssignment with null/empty taskId');
+          throw new BadRequestException('TaskId не може бути порожнім');
+        }
+
         const newAssignment = new TaskAssignment();
         newAssignment.taskId       = taskId;
         newAssignment.userId       = volunteer.id;
         newAssignment.fulfilledRole = dto.fulfilledRole ?? (null as any);
         newAssignment.status       = AssignmentStatus.ASSIGNED;
         newAssignment.assignedAt   = new Date();
+        
+        console.log(`Creating new TaskAssignment for taskId: ${taskId}, userId: ${volunteer.id}`);
         assignment = await manager.save(TaskAssignment, newAssignment);
       }
 
@@ -181,7 +195,7 @@ export class TasksService {
       // Перший раз досягли neededPeopleCount → IN_PROGRESS + чат
       if (isNowFull && task.status === TaskStatus.TODO) {
         task.status = TaskStatus.IN_PROGRESS;
-        const chat = await this.createTaskChat(manager, task, request, volunteer);
+        const chat = await this.createChatWithAssignments(manager, task, request, volunteer, assignments);
         task.chatId = chat.id;
         await manager.save(Task, task);
 
@@ -367,9 +381,9 @@ export class TasksService {
     }
   }
 
-  private async createTaskChat(manager: any, task: Task, request: Request, newVolunteer: User): Promise<Chat> {
+  private async createChatWithAssignments(manager: any, task: Task, request: Request, newVolunteer: User, assignments: TaskAssignment[]): Promise<Chat> {
     const participantIds = new Set<string>([request.creatorId]);
-    task.assignments
+    assignments
       .filter((a) => a.status !== AssignmentStatus.WITHDRAWN)
       .forEach((a) => participantIds.add(a.userId));
     participantIds.add(newVolunteer.id);

@@ -19,6 +19,7 @@ import { TasksModule } from '@modules/tasks/tasks.module';
 import { ChatModule } from '@modules/chat/chat.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { EmailModule } from '@modules/email/email.module';
+import { TaskReportsModule } from '@modules/task-reports/task-reports.module';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { EmailModule } from '@modules/email/email.module';
     ChatModule,
     NotificationsModule,
     EmailModule,
+    TaskReportsModule,
   ],
   providers: [
     // Глобальний обробник помилок

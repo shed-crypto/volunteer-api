@@ -160,6 +160,15 @@ export class UsersService {
     return this.vehicleRepo.find({ where: { userId } });
   }
 
+  async searchUsers(query: string): Promise<Partial<User>[]> {
+    return this.userRepo
+      .createQueryBuilder('user')
+      .select(['user.id', 'user.fullName', 'user.avatarUrl'])
+      .where('user.fullName ILIKE :q OR user.email ILIKE :q', { q: `%${query}%` })
+      .limit(10)
+      .getMany();
+  }
+
   // ─── Приватні ─────────────────────────────────────────────────────────────
 
   private async checkAndUpgradeClearance(userId: string): Promise<void> {

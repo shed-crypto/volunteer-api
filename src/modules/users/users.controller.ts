@@ -1,6 +1,6 @@
 import {
   Controller, Get, Post, Patch, Param,
-  Body, UseGuards, ParseUUIDPipe,
+  Body, UseGuards, ParseUUIDPipe, Query, BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { UsersService } from './users.service';
@@ -24,6 +24,17 @@ export class UsersController {
   @ApiOperation({ summary: 'Список всіх користувачів (Admin/Coordinator)' })
   findAll(): Promise<User[]> {
     return this.usersService.findAll();
+  }
+
+  @Get('search')
+  @ApiOperation({ summary: 'Пошук користувачів для ініціації чату' })
+  searchUsers(
+    @Query('q') query: string,
+  ): Promise<Partial<User>[]> {
+    if (!query || query.length < 2) {
+      throw new BadRequestException('Мінімум 2 символи для пошуку');
+    }
+    return this.usersService.searchUsers(query);
   }
 
   // ─── Адмін-панель: повний список з vouchCount, isBlocked, isEmailVerified ─

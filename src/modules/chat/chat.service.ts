@@ -46,21 +46,19 @@ export class ChatService {
     return this.chatRepo.save(chat);
   }
 
-  /** Історія повідомлень чату (пагінація курсором) */
-  async getMessages(
-    chatId: string,
-    user: User,
-    limit = 50,
-    beforeId?: string,
-  ): Promise<Message[]> {
-    await this.ensureParticipant(chatId, user.id);
-
+    /** Історія повідомлень чату (пагінація курсором) */
+    async getMessages(
+      chatId: string,
+      user: User,
+      limit = 50,
+      beforeId?: string,
+    ): Promise<Message[]> {
+      await this.ensureParticipant(chatId, user.id);
+  
     const qb = this.messageRepo
       .createQueryBuilder('msg')
       .leftJoinAndSelect('msg.sender', 'sender')
-      .where('msg.chat_id = :chatId', { chatId })
-      .orderBy('msg.sent_at', 'DESC')
-      .take(limit);
+      .where('msg.chat_id = :chatId', { chatId });
 
     if (beforeId) {
       const cursor = await this.messageRepo.findOne({ where: { id: beforeId } });
@@ -69,8 +67,12 @@ export class ChatService {
       }
     }
 
-    const messages = await qb.getMany();
-    return messages.reverse(); // хронологічний порядок
+    const messages = await qb
+      .orderBy('msg.sent_at', 'DESC')
+      .take(limit)
+      .getRawAndEntities();
+      
+    return messages.entities.reverse();
   }
 
   /** Надіслати нове повідомлення в чат */
@@ -96,17 +98,14 @@ export class ChatService {
     async markAsRead(chatId: string, user: User): Promise<void> {
       await this.ensureParticipant(chatId, user.id);
 
-      await this.messageRepo
-        .createQueryBuilder()
-        .update(Message)
-        .set({
-          readBy: () => `COALESCE("read_by", '{}') || '${user.id}'::text[]`,
-        })
-        .where('chat_id = :chatId AND (read_by IS NULL OR NOT (:userId = ANY(read_by)))', {
-          chatId,
-          userId: user.id,
-        })
-        .execute();
+      // Cast read_by to text[] explicitly in query to ensure type matching
+      await this.messageRepo.query(
+        `UPDATE "messages" 
+         SET "read_by" = array_append(COALESCE("read_by", '{}'::text[]), $1::text)
+         WHERE "chat_id" = $2 
+         AND ("read_by" IS NULL OR NOT ($1::text = ANY(COALESCE("read_by", '{}'::text[]))))`,
+        [user.id, chatId],
+      );
     }
 
   private async ensureParticipant(chatId: string, userId: string): Promise<void> {
