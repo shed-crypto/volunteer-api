@@ -32,9 +32,9 @@ export class Message extends BaseEntity {
   @Column({ name: 'sent_at', type: 'timestamptz', default: () => 'NOW()' })
   sentAt: Date;
 
-   /** Прочитано учасниками (зберігаємо список userId) */
-   @Column({ name: 'read_by', type: 'simple-array', nullable: true, default: '' })
-   readBy: string[];
+  /** Прочитано учасниками (зберігаємо список userId) */
+  @Column({ name: 'read_by', type: 'text', array: true, nullable: true, default: '{}' })
+  readBy: string[] = [];
 
   /** Тип повідомлення (текст / фото / системне) */
   @Column({ name: 'message_type', type: 'varchar', length: 50, default: 'text' })

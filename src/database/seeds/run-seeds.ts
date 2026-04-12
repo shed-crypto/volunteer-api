@@ -32,8 +32,8 @@ async function seed() {
   await AppDataSource.initialize();
   console.log('✅ З\'єднання з БД встановлено');
 
-  //await AppDataSource.query('TRUNCATE TABLE "users", "organizations", "requests", "tasks", "task_assignments" RESTART IDENTITY CASCADE');
-  //console.log('🧹 База даних очищена');
+  await AppDataSource.query('TRUNCATE TABLE "users", "organizations", "requests", "tasks", "task_assignments" RESTART IDENTITY CASCADE');
+  console.log('🧹 База даних очищена');
 
   const userRepo = AppDataSource.getRepository('users');
   const orgRepo = AppDataSource.getRepository('organizations');

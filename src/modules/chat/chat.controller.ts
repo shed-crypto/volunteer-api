@@ -1,9 +1,14 @@
 import {
   Controller, Get, Post,
   Param, Query, UseGuards,
-  ParseUUIDPipe, ParseIntPipe,
+  ParseUUIDPipe,
   HttpCode, HttpStatus, Body,
+  UseInterceptors, UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { IsUUID, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -35,6 +40,19 @@ class CreateMessageDto {
   @IsOptional()
   messageType?: string;
 }
+
+// ─── Multer: зберігаємо файли чату у uploads/chat ────────────────────────────
+const chatStorage = diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = 'uploads/chat';
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${unique}${extname(file.originalname)}`);
+  },
+});
 
 @ApiTags('Чати')
 @ApiBearerAuth()
@@ -79,6 +97,33 @@ export class ChatController {
     @CurrentUser() user: User,
   ): Promise<Message> {
     return this.chatService.sendMessage(chatId, user, dto);
+  }
+
+  /**
+   * Завантажує файл у чат, зберігає на диск і повертає URL.
+   * Клієнт використовує URL для відправки повідомлення з вкладенням через WebSocket.
+   *
+   * POST /api/chats/:chatId/files
+   * Body: multipart/form-data з полем "file"
+   * Response: { url, name, mimeType }
+   */
+  @Post(':chatId/files')
+  @ApiOperation({ summary: 'Завантажити файл у чат' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: chatStorage,
+      limits: { fileSize: 25 * 1024 * 1024 }, // 25 МБ
+    }),
+  )
+  uploadChatFile(
+    @Param('chatId', ParseUUIDPipe) chatId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ): { url: string; name: string; mimeType: string } {
+    return {
+      url: `/uploads/chat/${file.filename}`,
+      name: file.originalname,
+      mimeType: file.mimetype,
+    };
   }
 
   @Post(':chatId/read')

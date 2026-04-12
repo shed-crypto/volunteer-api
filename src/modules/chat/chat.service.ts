@@ -36,14 +36,25 @@ export class ChatService {
       .where('chat.type = :type', { type: ChatType.DIRECT })
       .getOne();
 
-    if (existing) return existing;
+    if (existing) {
+      return this.chatRepo
+        .createQueryBuilder('chat')
+        .leftJoinAndSelect('chat.participants', 'participants')
+        .where('chat.id = :id', { id: existing.id })
+        .getOne();
+    }
 
     const target = { id: targetUserId } as User;
     const chat = this.chatRepo.create({
       type: ChatType.DIRECT,
       participants: [user, target],
     });
-    return this.chatRepo.save(chat);
+    const savedChat = await this.chatRepo.save(chat);
+    return this.chatRepo
+      .createQueryBuilder('chat')
+      .leftJoinAndSelect('chat.participants', 'participants')
+      .where('chat.id = :id', { id: savedChat.id })
+      .getOne();
   }
 
     /** Історія повідомлень чату (пагінація курсором) */
@@ -68,11 +79,11 @@ export class ChatService {
     }
 
     const messages = await qb
-      .orderBy('msg.sent_at', 'DESC')
+      .orderBy('msg.sent_at', 'ASC')
       .take(limit)
-      .getRawAndEntities();
+      .getMany();
       
-    return messages.entities.reverse();
+    return messages;
   }
 
   /** Надіслати нове повідомлення в чат */
@@ -98,12 +109,11 @@ export class ChatService {
     async markAsRead(chatId: string, user: User): Promise<void> {
       await this.ensureParticipant(chatId, user.id);
 
-      // Cast read_by to text[] explicitly in query to ensure type matching
       await this.messageRepo.query(
         `UPDATE "messages" 
-         SET "read_by" = array_append(COALESCE("read_by", '{}'::text[]), $1::text)
+         SET "read_by" = array_append(COALESCE("read_by", '{}'::text[]), $1)
          WHERE "chat_id" = $2 
-         AND ("read_by" IS NULL OR NOT ($1::text = ANY(COALESCE("read_by", '{}'::text[]))))`,
+         AND NOT ($1 = ANY(COALESCE("read_by", '{}'::text[])))`,
         [user.id, chatId],
       );
     }

@@ -1,7 +1,26 @@
-import { Controller, Post, Get, Body, Param, UseGuards, Request, UseInterceptors, UploadedFiles } from '@nestjs/common';
+import {
+  Controller, Post, Get, Body, Param,
+  UseGuards, Request, UseInterceptors, UploadedFiles, NotFoundException,
+} from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import { TaskReportsService } from './task-reports.service';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
+
+// ─── Multer: зберігаємо файли на диск у папку uploads/reports ─────────────────
+const reportStorage = diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = 'uploads/reports';
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${unique}${extname(file.originalname)}`);
+  },
+});
 
 @Controller('tasks/:taskId/reports')
 @UseGuards(JwtAuthGuard)
@@ -9,18 +28,27 @@ export class TaskReportsController {
   constructor(private readonly reportsService: TaskReportsService) {}
 
   @Post()
-  @UseInterceptors(FilesInterceptor('attachments'))
+  @UseInterceptors(
+    FilesInterceptor('attachments', 10, {
+      storage: reportStorage,
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10 МБ на файл
+    }),
+  )
   async create(
     @Param('taskId') taskId: string,
     @Request() req: any,
     @Body() body: { comment: string },
-    @UploadedFiles() files: Array<any>,
+    @UploadedFiles() files: Array<Express.Multer.File>,
   ) {
-    return this.reportsService.create(taskId, req.user, body.comment, files);
+    return this.reportsService.create(taskId, req.user, body.comment, files ?? []);
   }
 
   @Get()
   async findAll(@Param('taskId') taskId: string) {
     return this.reportsService.findByTask(taskId);
   }
+
+  // Примітка: завантаження / перегляд файлів відбувається через
+  // статичне обслуговування ServeStaticModule (/uploads/**).
+  // Окремі ендпоінти для скачування не потрібні.
 }

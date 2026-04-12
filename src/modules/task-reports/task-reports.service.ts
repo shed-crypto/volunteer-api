@@ -1,9 +1,9 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable, NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { TaskReport } from './entities/task-report.entity';
-import { Task } from '@modules/tasks/entities/task.entity';
-import { User } from '@modules/users/entities/user.entity';
 
 @Injectable()
 export class TaskReportsService {
@@ -12,9 +12,16 @@ export class TaskReportsService {
     private readonly reportRepository: Repository<TaskReport>,
   ) {}
 
-  async create(taskId: string, user: User, comment: string, files: any[]): Promise<TaskReport> {
+  async create(
+    taskId: string,
+    user: any,
+    comment: string,
+    files: Express.Multer.File[],
+  ): Promise<TaskReport> {
+    // Mapуємо збережені файли у масив вкладень
+    // url починається з '/' → фронтенд конкатенує baseUrl + url правильно
     const attachments = files.map((file) => ({
-      url: file.path || file.filename,
+      url: `/uploads/reports/${file.filename}`,
       type: file.mimetype,
       name: file.originalname,
     }));
@@ -34,5 +41,14 @@ export class TaskReportsService {
       relations: ['user'],
       order: { createdAt: 'ASC' },
     });
+  }
+
+  async findById(id: string): Promise<TaskReport> {
+    const report = await this.reportRepository.findOne({
+      where: { id },
+      relations: ['user'],
+    });
+    if (!report) throw new NotFoundException(`Report ${id} not found`);
+    return report;
   }
 }

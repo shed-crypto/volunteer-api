@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 
 // ─── Конфігурація ─────────────────────────────────────────────────────────────
@@ -28,6 +30,12 @@ import { TaskReportsModule } from '@modules/task-reports/task-reports.module';
       isGlobal: true,
       load: [databaseConfig],
       envFilePath: ['.env', '.env.local'],
+    }),
+
+    // ─── Статичне обслуговування завантажених файлів ───────────────────────
+    ServeStaticModule.forRoot({
+      rootPath: join(process.cwd(), 'uploads'),
+      serveRoot: '/uploads',
     }),
 
     // ─── Rate Limiting (захист від DDoS та брутфорсу) ─────────────────────

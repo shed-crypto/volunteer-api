@@ -192,6 +192,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const socketId = this.connectedUsers.get(userId);
     if (!socketId) return;
 
+    if (!this.server || !this.server.sockets) {
+      this.logger.warn(`WebSocket server or sockets not initialized when trying to add participant ${userId} to chat ${chatId}`);
+      return;
+    }
+    
+    // Додаткова перевірка для sockets.sockets
+    if (!this.server.sockets.sockets) {
+      this.logger.warn(`WebSocket server.sockets.sockets not initialized when trying to add participant ${userId} to chat ${chatId}`);
+      return;
+    }
+    
     const socket = this.server.sockets.sockets.get(socketId);
     if (!socket) return;
 
