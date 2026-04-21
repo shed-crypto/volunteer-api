@@ -7,13 +7,14 @@ import { Repository } from 'typeorm';
 import { Chat } from './entities/chat.entity';
 import { Message } from './entities/message.entity';
 import { User } from '@modules/users/entities/user.entity';
-import { ChatType } from '@common/enums';
+import { ChatType, SystemRole } from '@common/enums';
 
 @Injectable()
 export class ChatService {
   constructor(
     @InjectRepository(Chat) private readonly chatRepo: Repository<Chat>,
     @InjectRepository(Message) private readonly messageRepo: Repository<Message>,
+    @InjectRepository(User) private readonly userRepo: Repository<User>,
   ) {}
 
   /** Усі чати поточного користувача */
@@ -57,29 +58,29 @@ export class ChatService {
       .getOne();
   }
 
-    /** Історія повідомлень чату (пагінація курсором) */
-    async getMessages(
-      chatId: string,
-      user: User,
-      limit = 50,
-      beforeId?: string,
-    ): Promise<Message[]> {
-      await this.ensureParticipant(chatId, user.id);
-  
+  /** Історія повідомлень чату (пагінація курсором) */
+  async getMessages(
+    chatId: string,
+    user: User,
+    limit = 50,
+    beforeId?: string,
+  ): Promise<Message[]> {
+    await this.ensureParticipant(chatId, user.id);
+
     const qb = this.messageRepo
       .createQueryBuilder('msg')
       .leftJoinAndSelect('msg.sender', 'sender')
-      .where('msg.chat_id = :chatId', { chatId });
+      .where('msg.chatId = :chatId', { chatId });
 
     if (beforeId) {
       const cursor = await this.messageRepo.findOne({ where: { id: beforeId } });
       if (cursor) {
-        qb.andWhere('msg.sent_at < :ts', { ts: cursor.sentAt });
+        qb.andWhere('msg.sentAt < :ts', { ts: cursor.sentAt });
       }
     }
 
     const messages = await qb
-      .orderBy('msg.sent_at', 'ASC')
+      .orderBy('msg.sentAt', 'ASC')
       .take(limit)
       .getMany();
       
@@ -119,13 +120,32 @@ export class ChatService {
     }
 
   private async ensureParticipant(chatId: string, userId: string): Promise<void> {
+    // First check if user is a direct participant
     const chat = await this.chatRepo
       .createQueryBuilder('chat')
       .innerJoin('chat.participants', 'p', 'p.id = :userId', { userId })
       .where('chat.id = :chatId', { chatId })
       .getOne();
 
+    // If not a participant, check for admin access to task chats
     if (!chat) {
+      // Get user with role information
+      const user = await this.userRepo.findOne({ 
+        where: { id: userId },
+        select: ['id', 'systemRole']
+      });
+      
+      // Get chat type
+      const chatWithType = await this.chatRepo.findOne({ 
+        where: { id: chatId },
+        select: ['id', 'type']
+      });
+
+      // Allow admin access to task chats
+      if (user?.systemRole === SystemRole.ADMIN && chatWithType?.type === ChatType.TASK_CHAT) {
+        return; // Allow access
+      }
+      
       throw new ForbiddenException('Немає доступу до цього чату');
     }
   }

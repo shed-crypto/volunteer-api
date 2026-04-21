@@ -403,15 +403,15 @@ export class TasksService {
     return manager.save(chat);
   }
 
-  private async boostVolunteerScores(userIds: string[]): Promise<void> {
-    if (!userIds.length) return;
-    await this.dataSource
-      .createQueryBuilder()
-      .update('users')
-      .set({ trust_score: () => 'LEAST(trust_score + 5, 100)' } as any)
-      .where('id IN (:...ids)', { ids: userIds })
-      .execute();
-  }
+    private async boostVolunteerScores(userIds: string[]): Promise<void> {
+     if (!userIds.length) return;
+     await this.dataSource
+       .createQueryBuilder()
+       .update('users')
+       .set({ trustScore: () => 'LEAST(trust_score + 5, 100)' } as any)
+       .where('id IN (:...ids)', { ids: userIds })
+       .execute();
+   }
 
   private async checkRequestCompletion(requestId: string): Promise<void> {
     const [total, done] = await Promise.all([

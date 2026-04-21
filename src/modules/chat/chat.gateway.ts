@@ -16,6 +16,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Chat } from './entities/chat.entity';
 import { Message } from './entities/message.entity';
 import { User } from '@modules/users/entities/user.entity';
+import { ChatType, SystemRole } from '@common/enums';
 
 /**
  * WebSocket шлюз для реального часу (чат).
@@ -119,7 +120,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ): Promise<void> {
     const { userId, fullName } = client.data;
 
-    // Перевіряємо, чи є користувач учасником чату
+    // Перевіряємо, чи є користувач учасником чату або адмін у таск-чаті
     const chat = await this.chatRepository
       .createQueryBuilder('chat')
       .innerJoin('chat.participants', 'p', 'p.id = :userId', { userId })
@@ -127,7 +128,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       .getOne();
 
     if (!chat) {
-      throw new WsException('Немає доступу до цього чату');
+      // Якщо не учасник, перевіряємо чи є адміном для таск-чатів
+      const userWithRole = await this.userRepository.findOne({
+        where: { id: userId },
+        select: ['id', 'systemRole']
+      });
+      
+      const chatWithType = await this.chatRepository.findOne({
+        where: { id: data.chatId },
+        select: ['id', 'type']
+      });
+      
+      // Дозволяємо адміну писати в таск-чатах
+      if (!(userWithRole?.systemRole === SystemRole.ADMIN && chatWithType?.type === ChatType.TASK_CHAT)) {
+        throw new WsException('Немає доступу до цього чату');
+      }
     }
 
     // Зберігаємо повідомлення в БД
