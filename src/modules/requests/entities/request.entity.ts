@@ -132,6 +132,10 @@ export class Request extends BaseEntity {
   @Column({ type: 'simple-array', nullable: true, default: '' })
   reportUrls: string[];
 
+  // Поля для офлайн-синхронізації (NFR-03)
+  @Column({ name: 'last_synced_at', type: 'timestamptz', nullable: true })
+  lastSyncedAt: Date;
+
   @OneToMany(() => Task, (task) => task.request, { cascade: true })
   tasks: Task[];
 }

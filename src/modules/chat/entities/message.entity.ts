@@ -23,11 +23,21 @@ export class Message extends BaseEntity {
   @JoinColumn({ name: 'sender_id' })
   sender: User;
 
-  @Column({ name: 'sender_id', type: 'uuid', nullable: true })
-  senderId: string;
+@Column({ name: 'sender_id', type: 'uuid', nullable: true })
+senderId: string;
 
   @Column({ type: 'text' })
   content: string;
+
+  // Поля для офлайн-синхронізації (NFR-03)
+  @Column({ name: 'message_status', type: 'varchar', length: 20, default: 'sent' })
+  messageStatus: string; // 'pending' | 'sent' | 'delivered' | 'read'
+
+  @Column({ name: 'delivered_to', type: 'text', array: true, nullable: true, default: '{}' })
+  deliveredTo: string[] = [];
+
+  @Column({ name: 'last_synced_at', type: 'timestamptz', nullable: true })
+  lastSyncedAt: Date;
 
   @Column({ name: 'sent_at', type: 'timestamptz', default: () => 'NOW()' })
   sentAt: Date;

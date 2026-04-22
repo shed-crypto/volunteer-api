@@ -76,6 +76,10 @@ export class Task extends BaseEntity {
   @Column({ name: 'chat_id', type: 'uuid', nullable: true })
   chatId: string;
 
+  // Поля для офлайн-синхронізації (NFR-03)
+  @Column({ name: 'last_synced_at', type: 'timestamptz', nullable: true })
+  lastSyncedAt: Date;
+
   @OneToMany(() => TaskAssignment, (assignment) => assignment.task, {
     cascade: true,
   })
