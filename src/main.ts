@@ -72,6 +72,11 @@ async function bootstrap() {
     );
   }
 
+  // ─── Health check endpoint (без /api префіксу) ─────────────────────────────
+  app.getHttpAdapter().get('/health/ping', (req: any, res: any) => {
+    res.status(200).json({ status: 'ok', timestamp: Date.now() });
+  });
+
   // ─── Запуск ────────────────────────────────────────────────────────────────
 
   const port = parseInt(process.env.PORT || '3000', 10);
