@@ -24,6 +24,9 @@ import {
   RefreshTokenDto,
   VerifyEmailDto,
   AuthResponseDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
+  ChangePasswordDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { CurrentUser } from '@common/decorators/current-user.decorator';
@@ -118,6 +121,35 @@ export class AuthController {
   @ApiResponse({ status: 400, description: 'Пошта вже підтверджена' })
   resendVerification(@CurrentUser() user: User): Promise<{ message: string }> {
     return this.authService.resendVerificationEmail(user.id);
+  }
+
+  // ─── Скидання пароля ────────────────────────────────────────────────────────
+
+  @Post('forgot-password')
+  @ApiOperation({ summary: 'Запит на скидання пароля' })
+  @ApiResponse({ status: 200, description: 'Лист надіслано (якщо email існує)' })
+  forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ message: string }> {
+    return this.authService.requestPasswordReset(dto.email);
+  }
+
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Встановити новий пароль за токеном' })
+  @ApiResponse({ status: 200, description: 'Пароль успішно змінено' })
+  @ApiResponse({ status: 400, description: 'Невірний або протермінований токен' })
+  resetPassword(@Body() dto: ResetPasswordDto): Promise<{ message: string }> {
+    return this.authService.resetPassword(dto.token, dto.newPassword);
+  }
+
+  @Post('change-password')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Змінити поточний пароль' })
+  @ApiResponse({ status: 200, description: 'Пароль успішно змінено' })
+  changePassword(
+    @CurrentUser() user: User,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    return this.authService.changePassword(user.id, dto);
   }
 
   // ─── Утилітний метод ─────────────────────────────────────────────────────────

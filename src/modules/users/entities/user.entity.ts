@@ -102,6 +102,23 @@ export class User extends BaseEntity {
   @Exclude()
   emailVerificationToken: string | null;
 
+  @Column({
+    name: 'password_reset_token',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  @Exclude()
+  passwordResetToken: string | null;
+
+  @Column({
+    name: 'password_reset_expires',
+    type: 'timestamp',
+    nullable: true,
+  })
+  @Exclude()
+  passwordResetExpires: Date | null;
+
   // ─── Зв'язки ────────────────────────────────────────────────────────────────
 
   @OneToMany(() => Vehicle, (vehicle) => vehicle.user, { cascade: true })

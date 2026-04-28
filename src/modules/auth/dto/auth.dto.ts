@@ -73,6 +73,42 @@ export class VerifyEmailDto {
   token: string;
 }
 
+export class ForgotPasswordDto {
+  @ApiProperty({ example: 'example@example.com' })
+  @IsEmail()
+  email: string;
+}
+
+export class ResetPasswordDto {
+  @ApiProperty({ description: 'UUID-токен із листа скидання пароля' })
+  @IsString()
+  token: string;
+
+  @ApiProperty({ example: 'NewStrongPass123!' })
+  @IsString()
+  @MinLength(8)
+  @MaxLength(72)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+    message: 'Пароль повинен містити великі та малі літери та цифри',
+  })
+  newPassword: string;
+}
+
+export class ChangePasswordDto {
+  @ApiProperty({ example: 'OldPass123!' })
+  @IsString()
+  oldPassword: string;
+
+  @ApiProperty({ example: 'NewStrongPass123!' })
+  @IsString()
+  @MinLength(8)
+  @MaxLength(72)
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/, {
+    message: 'Пароль повинен містити великі та малі літери та цифри',
+  })
+  newPassword: string;
+}
+
 export class AuthResponseDto {
   @ApiProperty()
   accessToken: string;

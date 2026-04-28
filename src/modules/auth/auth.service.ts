@@ -13,7 +13,12 @@ import * as argon2 from 'argon2';
 import { v4 as uuidv4 } from 'uuid';
 import { User } from '@modules/users/entities/user.entity';
 import { EmailService } from '@modules/email/email.service';
-import { RegisterDto, LoginDto, AuthResponseDto } from './dto/auth.dto';
+import {
+  RegisterDto,
+  LoginDto,
+  AuthResponseDto,
+  ChangePasswordDto,
+} from './dto/auth.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 
 @Injectable()
@@ -141,6 +146,54 @@ export class AuthService {
     return { message: 'Лист верифікації надіслано повторно' };
   }
 
+  // ─── Скидання пароля ────────────────────────────────────────────────────────
+
+  async requestPasswordReset(email: string): Promise<{ message: string }> {
+    const user = await this.userRepository.findOne({
+      where: { email: email.toLowerCase() },
+    });
+
+    if (!user) {
+      // Для безпеки не говоримо, що користувача не знайдено (prevent user enumeration)
+      return { message: 'Якщо цей email існує, лист для скидання пароля надіслано' };
+    }
+
+    const resetToken = uuidv4();
+    const resetExpires = new Date();
+    resetExpires.setHours(resetExpires.getHours() + 1); // Токен діє 1 годину
+
+    await this.userRepository.update(user.id, {
+      passwordResetToken: resetToken,
+      passwordResetExpires: resetExpires,
+    });
+
+    setImmediate(() => {
+      this.emailService.sendPasswordResetEmail(user.email, resetToken).catch(() => {});
+    });
+
+    return { message: 'Якщо цей email існує, лист для скидання пароля надіслано' };
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {
+    const user = await this.userRepository.findOne({
+      where: { passwordResetToken: token },
+    });
+
+    if (!user || !user.passwordResetExpires || user.passwordResetExpires < new Date()) {
+      throw new BadRequestException('Токен недійсний або протермінований');
+    }
+
+    const hashedPassword = await argon2.hash(newPassword);
+
+    await this.userRepository.update(user.id, {
+      passwordHash: hashedPassword,
+      passwordResetToken: null,
+      passwordResetExpires: null,
+    });
+
+    return { message: 'Пароль успішно змінено' };
+  }
+
   // ─── Оновлення токенів ───────────────────────────────────────────────────────
 
   async refreshTokens(userId: string, refreshToken: string): Promise<AuthResponseDto> {
@@ -166,6 +219,29 @@ export class AuthService {
 
   async logout(userId: string): Promise<void> {
     await this.userRepository.update(userId, { refreshTokenHash: null });
+  }
+
+  // ─── Зміна пароля ──────────────────────────────────────────────────────────
+
+  async changePassword(userId: string, dto: ChangePasswordDto): Promise<{ message: string }> {
+    const user = await this.userRepository.findOne({
+      where: { id: userId },
+      select: ['id', 'passwordHash'],
+    });
+
+    if (!user) throw new NotFoundException('Користувача не знайдено');
+
+    const isOldPasswordValid = await user.verifyPassword(dto.oldPassword);
+    if (!isOldPasswordValid) {
+      throw new UnauthorizedException('Невірний старий пароль');
+    }
+
+    const hashedPassword = await argon2.hash(dto.newPassword);
+    await this.userRepository.update(user.id, {
+      passwordHash: hashedPassword,
+    });
+
+    return { message: 'Пароль успішно змінено' };
   }
 
   // ─── Приватні методи ────────────────────────────────────────────────────────

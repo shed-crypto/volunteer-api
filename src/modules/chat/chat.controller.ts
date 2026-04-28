@@ -115,10 +115,19 @@ export class ChatController {
       limits: { fileSize: 25 * 1024 * 1024 }, // 25 МБ
     }),
   )
-  uploadChatFile(
+  async uploadChatFile(
     @Param('chatId', ParseUUIDPipe) chatId: string,
     @UploadedFile() file: Express.Multer.File,
-  ): { url: string; name: string; mimeType: string } {
+  ): Promise<{ url: string; name: string; mimeType: string }> {
+    if (file.mimetype.startsWith('image/')) {
+      const sharp = require('sharp');
+      const buffer = await sharp(file.path)
+        .rotate()
+        .withMetadata({})
+        .toBuffer();
+      require('fs').writeFileSync(file.path, buffer);
+    }
+    
     return {
       url: `/uploads/chat/${file.filename}`,
       name: file.originalname,
