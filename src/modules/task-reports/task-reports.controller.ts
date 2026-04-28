@@ -48,6 +48,22 @@ export class TaskReportsController {
     return this.reportsService.findByTask(taskId);
   }
 
+  @Post(':id/edit')
+  async update(
+    @Param('id') id: string,
+    @Body() body: { comment: string },
+  ) {
+    return this.reportsService.update(id, body.comment);
+  }
+
+  @Post(':id/delete')
+  async delete(
+    @Param('id') id: string,
+    @Request() req: any,
+  ) {
+    return this.reportsService.delete(id, req.user.id);
+  }
+
   // Примітка: завантаження / перегляд файлів відбувається через
   // статичне обслуговування ServeStaticModule (/uploads/**).
   // Окремі ендпоінти для скачування не потрібні.

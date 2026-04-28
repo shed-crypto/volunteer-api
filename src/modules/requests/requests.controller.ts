@@ -71,4 +71,22 @@ export class RequestsController {
   ): Promise<void> {
     return this.requestsService.remove(id, user);
   }
+
+  @Post(':id/pending-review')
+  @ApiOperation({ summary: 'Відправити заявку на перевірку виконання' })
+  markAsPendingReview(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ): Promise<Request> {
+    return this.requestsService.markAsPendingReview(id, user);
+  }
+
+  @Post(':id/confirm-completion')
+  @ApiOperation({ summary: 'Підтвердити завершення заявки' })
+  confirmCompletion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ): Promise<Request> {
+    return this.requestsService.confirmCompletion(id, user);
+  }
 }

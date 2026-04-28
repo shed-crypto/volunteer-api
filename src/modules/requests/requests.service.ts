@@ -192,6 +192,29 @@ export class RequestsService {
     await this.requestRepository.softDelete(id);
   }
 
+  // ─── Життєвий цикл (Request Lifecycle) ──────────────────────────────────────
+
+  async markAsPendingReview(id: string, requester: User): Promise<Request> {
+    const request = await this.requestRepository.findOne({ where: { id } });
+    if (!request) throw new NotFoundException(`Заявку ${id} не знайдено`);
+
+    // Будь-який волонтер, що працює над заявкою (чи власник), може відправити на перевірку
+    request.status = RequestStatus.PENDING_REVIEW;
+    return await this.requestRepository.save(request);
+  }
+
+  async confirmCompletion(id: string, requester: User): Promise<Request> {
+    const request = await this.requestRepository.findOne({ where: { id } });
+    if (!request) throw new NotFoundException(`Заявку ${id} не знайдено`);
+
+    if (request.creatorId !== requester.id && requester.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException('Тільки власник або адміністратор може підтвердити виконання');
+    }
+
+    request.status = RequestStatus.COMPLETED;
+    return await this.requestRepository.save(request);
+  }
+
   // ─── Приватні методи ──────────────────────────────────────────────────────
 
   private obfuscateLocation(request: Request, user: User): Request {

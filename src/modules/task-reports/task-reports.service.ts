@@ -51,4 +51,28 @@ export class TaskReportsService {
     if (!report) throw new NotFoundException(`Report ${id} not found`);
     return report;
   }
+
+  async update(id: string, comment: string): Promise<TaskReport> {
+    const report = await this.findById(id);
+    // Перевірка часу: 30 хвилин
+    const diff = (Date.now() - new Date(report.createdAt).getTime()) / 60000;
+    if (diff > 30) {
+      throw new Error('Редагування звіту можливе лише протягом 30 хвилин');
+    }
+    report.comment = comment;
+    return this.reportRepository.save(report);
+  }
+
+  async delete(id: string, userId: string): Promise<void> {
+    const report = await this.findById(id);
+    if (report.userId !== userId) {
+      throw new Error('Ви не можете видалити чужий звіт');
+    }
+    // Перевірка часу: 30 хвилин
+    const diff = (Date.now() - new Date(report.createdAt).getTime()) / 60000;
+    if (diff > 30) {
+      throw new Error('Видалення звіту можливе лише протягом 30 хвилин');
+    }
+    await this.reportRepository.delete(id);
+  }
 }
