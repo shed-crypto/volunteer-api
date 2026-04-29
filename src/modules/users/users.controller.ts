@@ -9,7 +9,9 @@ import { CurrentUser } from '@common/decorators/current-user.decorator';
 import { User } from './entities/user.entity';
 import { Vehicle } from './entities/vehicle.entity';
 import { TrustVouch } from './entities/trust-vouch.entity';
-import { SystemRole } from '@common/enums';
+import { SystemRole, ClearanceLevel } from '@common/enums';
+import { AdminCreateUserDto } from './dto/create-user.dto';
+import { UpdateClearanceDto } from './dto/update-clearance.dto';
 
 @ApiTags('Користувачі')
 @ApiBearerAuth()
@@ -108,6 +110,32 @@ export class UsersController {
     @CurrentUser() admin: User,
   ): Promise<User> {
     return this.usersService.changeRole(id, body.systemRole, admin);
+  }
+
+  @Patch(':id/clearance')
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.ADMIN)
+  @ApiOperation({
+    summary: 'Змінити рівень допуску користувача (Admin)',
+    description: 'Дозволяє вручну призначити LOCAL, INTERNATIONAL або FRONTLINE.',
+  })
+  updateClearance(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateClearanceDto,
+    @CurrentUser() admin: User,
+  ): Promise<User> {
+    return this.usersService.updateClearance(id, dto.clearanceLevel, admin);
+  }
+
+  @Post()
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.ADMIN)
+  @ApiOperation({ summary: 'Створити нового користувача (Admin)' })
+  createUser(
+    @Body() dto: AdminCreateUserDto,
+    @CurrentUser() admin: User,
+  ): Promise<User> {
+    return this.usersService.createUser(dto, admin);
   }
 
   // ─── Система Поручителів ──────────────────────────────────────────────────

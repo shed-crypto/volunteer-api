@@ -8,6 +8,7 @@ import { User } from './entities/user.entity';
 import { TrustVouch } from './entities/trust-vouch.entity';
 import { Vehicle } from './entities/vehicle.entity';
 import { SystemRole, ClearanceLevel } from '@common/enums';
+import { AdminCreateUserDto } from './dto/create-user.dto';
 
 const FRONTLINE_VOUCHES_REQUIRED = parseInt(
   process.env.FRONTLINE_VOUCHES_REQUIRED || '3', 10,
@@ -106,6 +107,45 @@ export class UsersService {
 
     await this.userRepo.update(targetId, { systemRole: newRole });
     return this.findById(targetId);
+  }
+
+  // ─── Зміна рівня допуску (Admin) ──────────────────────────────────────────
+  async updateClearance(targetId: string, newLevel: ClearanceLevel, admin: User): Promise<User> {
+    if (admin.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException('Лише адміністратор може змінювати рівень допуску');
+    }
+    const target = await this.userRepo.findOne({ where: { id: targetId } });
+    if (!target) throw new NotFoundException('Користувача не знайдено');
+
+    await this.userRepo.update(targetId, { clearanceLevel: newLevel });
+    return this.findById(targetId);
+  }
+
+  // ─── Створення користувача адміном ─────────────────────────────────────────
+  async createUser(dto: AdminCreateUserDto, admin: User): Promise<User> {
+    if (admin.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException('Лише адміністратор може створювати користувачів');
+    }
+
+    const existing = await this.userRepo.findOne({
+      where: { email: dto.email.toLowerCase() },
+    });
+    if (existing) {
+      throw new ConflictException('Користувач з таким email вже існує');
+    }
+
+    const user = this.userRepo.create({
+      email: dto.email.toLowerCase(),
+      passwordHash: dto.password, // Буде захешовано у @BeforeInsert
+      fullName: dto.fullName,
+      phoneNumber: dto.phoneNumber,
+      systemRole: dto.systemRole,
+      clearanceLevel: dto.clearanceLevel || ClearanceLevel.LOCAL,
+      isEmailVerified: true, // Примусово підтверджуємо при створенні адміном
+    });
+
+    await this.userRepo.save(user);
+    return this.findById(user.id);
   }
 
   // ─── Система Поручителів (FR-02) ──────────────────────────────────────────

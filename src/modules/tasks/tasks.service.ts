@@ -162,14 +162,18 @@ export class TasksService {
 
       // Крок 3: Frontline — перевірка поручителів
       if (request.requiredClearance === ClearanceLevel.FRONTLINE) {
-        const vouchCount = await manager.count(TrustVouch, {
-          where: { voucheeId: volunteer.id },
-        });
-        if (vouchCount < FRONTLINE_VOUCHES_REQUIRED) {
-          throw new ForbiddenException(
-            `Для цього завдання потрібно ${FRONTLINE_VOUCHES_REQUIRED} поручителі. ` +
-            `У вас: ${vouchCount}.`,
-          );
+        // Якщо користувач вже має рівень FRONTLINE (призначений адміном або вже підтверджений),
+        // пропускаємо перевірку поручителів.
+        if (volunteer.clearanceLevel !== ClearanceLevel.FRONTLINE) {
+          const vouchCount = await manager.count(TrustVouch, {
+            where: { voucheeId: volunteer.id },
+          });
+          if (vouchCount < FRONTLINE_VOUCHES_REQUIRED) {
+            throw new ForbiddenException(
+              `Для цього завдання потрібно ${FRONTLINE_VOUCHES_REQUIRED} поручителі. ` +
+              `У вас: ${vouchCount}.`,
+            );
+          }
         }
       }
 
