@@ -64,6 +64,14 @@ export class TaskReportsController {
     return this.reportsService.delete(id, req.user.id);
   }
 
+  @Post(':id/verify')
+  async verify(
+    @Param('id') id: string,
+    @Request() req: any,
+  ) {
+    return this.reportsService.verifyReport(id, req.user.id);
+  }
+
   // Примітка: завантаження / перегляд файлів відбувається через
   // статичне обслуговування ServeStaticModule (/uploads/**).
   // Окремі ендпоінти для скачування не потрібні.

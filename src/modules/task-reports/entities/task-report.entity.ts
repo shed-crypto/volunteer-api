@@ -24,4 +24,17 @@ export class TaskReport extends BaseEntity {
 
   @Column({ type: 'jsonb', nullable: true, default: [] })
   attachments: { url: string; type: string; name: string }[];
+
+  @Column({ name: 'is_verified', type: 'boolean', default: false })
+  isVerified: boolean;
+
+  @ManyToOne(() => User, { nullable: true })
+  @JoinColumn({ name: 'verified_by_id' })
+  verifiedBy: User;
+
+  @Column({ name: 'verified_by_id', type: 'uuid', nullable: true })
+  verifiedById: string;
+
+  @Column({ name: 'verified_at', type: 'timestamp with time zone', nullable: true })
+  verifiedAt: Date;
 }

@@ -63,6 +63,14 @@ export class TaskReportsService {
     return this.reportRepository.save(report);
   }
 
+  async verifyReport(id: string, userId: string): Promise<TaskReport> {
+    const report = await this.findById(id);
+    report.isVerified = true;
+    report.verifiedById = userId;
+    report.verifiedAt = new Date();
+    return this.reportRepository.save(report);
+  }
+
   async delete(id: string, userId: string): Promise<void> {
     const report = await this.findById(id);
     if (report.userId !== userId) {
