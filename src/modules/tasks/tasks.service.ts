@@ -22,6 +22,7 @@ import {
   ClearanceLevel, SystemRole, ChatType,
 } from '@common/enums';
 import { CreateTaskDto } from './dto/create-task.dto';
+import { UpdateTaskDto } from './dto/update-task.dto';
 import { AssignTaskDto } from './dto/assign-task.dto';
 import { DelegateTaskDto } from './dto/delegate-task.dto';
 
@@ -80,6 +81,36 @@ export class TasksService {
     }
 
     const task = this.taskRepository.create({ ...dto, requestId });
+    return this.taskRepository.save(task);
+  }
+
+  async update(id: string, dto: UpdateTaskDto, user: User): Promise<Task> {
+    const task = await this.taskRepository.findOne({
+      where: { id },
+      relations: ['assignments', 'request'],
+    });
+    if (!task) throw new NotFoundException('Підзадачу не знайдено');
+
+    const isOwner = task.request.creatorId === user.id;
+    const isAdmin = user.systemRole === SystemRole.ADMIN;
+    const isCoordinator = user.systemRole === SystemRole.COORDINATOR;
+
+    if (!isOwner && !isAdmin && !isCoordinator) {
+      throw new ForbiddenException('Немає прав для редагування цієї підзадачі');
+    }
+
+    // FR-09: не можна редагувати якщо вже є активні призначення
+    const hasActiveAssignments = task.assignments?.some(
+      (a) => a.status !== AssignmentStatus.WITHDRAWN,
+    );
+
+    if (hasActiveAssignments && !isAdmin) {
+      throw new ForbiddenException(
+        'Не можна редагувати підзадачу, яку вже взяли в роботу волонтери.',
+      );
+    }
+
+    Object.assign(task, dto);
     return this.taskRepository.save(task);
   }
 
@@ -268,7 +299,7 @@ export class TasksService {
     if (!task) throw new NotFoundException('Підзадачу не знайдено');
 
     const isAssignee = task.assignments.some(
-      (a) => a.userId === user.id && a.status === AssignmentStatus.ASSIGNED,
+      (a) => a.userId === user.id && (a.status === AssignmentStatus.ASSIGNED || a.status === AssignmentStatus.ON_SITE),
     );
     if (!isAssignee && user.systemRole !== SystemRole.ADMIN &&
         user.systemRole !== SystemRole.COORDINATOR) {
@@ -276,6 +307,38 @@ export class TasksService {
     }
 
     task.status = TaskStatus.PENDING_REVIEW;
+    task.pendingReviewAt = new Date();
+    return this.taskRepository.save(task);
+  }
+
+  async returnToProgress(taskId: string, user: User): Promise<Task> {
+    const task = await this.taskRepository.findOne({
+      where: { id: taskId },
+      relations: ['request', 'assignments'],
+    });
+    if (!task) throw new NotFoundException('Підзадачу не знайдено');
+
+    const isAssignee = task.assignments.some(
+      (a) => a.userId === user.id && (a.status === AssignmentStatus.ASSIGNED || a.status === AssignmentStatus.ON_SITE || a.status === AssignmentStatus.COMPLETED),
+    );
+
+    if (!isAssignee && user.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException('Лише виконавець або адміністратор може повернути задачу в роботу');
+    }
+
+    if (task.status !== TaskStatus.PENDING_REVIEW) {
+      throw new BadRequestException('Задача не знаходиться на перевірці');
+    }
+
+    if (task.pendingReviewAt) {
+      const oneHourInMs = 60 * 60 * 1000;
+      if (new Date().getTime() - task.pendingReviewAt.getTime() > oneHourInMs && user.systemRole !== SystemRole.ADMIN) {
+        throw new ForbiddenException('Час для скасування відправки на перевірку вичерпано (1 година)');
+      }
+    }
+
+    task.status = TaskStatus.IN_PROGRESS;
+    task.pendingReviewAt = null as any;
     return this.taskRepository.save(task);
   }
 
@@ -320,6 +383,67 @@ export class TasksService {
       { taskId, status: AssignmentStatus.COMPLETED },
       { status: AssignmentStatus.ASSIGNED, completedAt: undefined as any },
     );
+    return this.taskRepository.save(task);
+  }
+
+  async updateTaskStatusAdmin(taskId: string, status: TaskStatus, user: User): Promise<Task> {
+    if (user.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException('Лише адміністратор може примусово змінювати статус');
+    }
+    const task = await this.taskRepository.findOne({ where: { id: taskId } });
+    if (!task) throw new NotFoundException('Підзадачу не знайдено');
+
+    task.status = status;
+    return this.taskRepository.save(task);
+  }
+
+  async cancelTask(taskId: string, user: User): Promise<Task> {
+    const task = await this.taskRepository.findOne({
+      where: { id: taskId },
+      relations: ['request', 'assignments'],
+    });
+    if (!task) throw new NotFoundException('Підзадачу не знайдено');
+
+    const isOwner = task.request.creatorId === user.id;
+    const isAdmin = user.systemRole === SystemRole.ADMIN;
+    const isCoordinator = user.systemRole === SystemRole.COORDINATOR;
+
+    if (!isOwner && !isAdmin && !isCoordinator) {
+      throw new ForbiddenException('Немає прав для скасування цієї підзадачі');
+    }
+
+    const hasActiveAssignments = task.assignments?.some(
+      (a) => a.status !== AssignmentStatus.WITHDRAWN,
+    );
+
+    if (hasActiveAssignments && !isAdmin) {
+      throw new ForbiddenException('Не можна скасувати підзадачу, яку вже взяли в роботу волонтери');
+    }
+
+    task.status = TaskStatus.CANCELLED;
+    return this.taskRepository.save(task);
+  }
+
+  async renewTask(taskId: string, user: User): Promise<Task> {
+    const task = await this.taskRepository.findOne({
+      where: { id: taskId },
+      relations: ['request'],
+    });
+    if (!task) throw new NotFoundException('Підзадачу не знайдено');
+
+    const isOwner = task.request.creatorId === user.id;
+    const isAdmin = user.systemRole === SystemRole.ADMIN;
+    const isCoordinator = user.systemRole === SystemRole.COORDINATOR;
+
+    if (!isOwner && !isAdmin && !isCoordinator) {
+      throw new ForbiddenException('Немає прав для поновлення цієї підзадачі');
+    }
+
+    if (task.status !== TaskStatus.CANCELLED) {
+      throw new BadRequestException('Підзадача не скасована');
+    }
+
+    task.status = TaskStatus.TODO;
     return this.taskRepository.save(task);
   }
 

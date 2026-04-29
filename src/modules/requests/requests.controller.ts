@@ -7,7 +7,7 @@ import {
   ApiTags, ApiOperation, ApiBearerAuth, ApiResponse,
 } from '@nestjs/swagger';
 import { RequestsService } from './requests.service';
-import { CreateRequestDto } from './dto/create-request.dto';
+import { CreateRequestDto, AddInfoRequestDto } from './dto/create-request.dto';
 import { UpdateRequestDto } from './dto/update-request.dto';
 import { FindRequestsDto } from './dto/find-requests.dto';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
@@ -53,13 +53,44 @@ export class RequestsController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Оновити заявку (статус, опис, терміновість)' })
+  @ApiOperation({ summary: 'Редагувати заявку (тільки якщо немає активних волонтерів)' })
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRequestDto,
     @CurrentUser() user: User,
   ): Promise<Request> {
     return this.requestsService.update(id, dto, user);
+  }
+
+  @Patch(':id/add-info')
+  @ApiOperation({ summary: 'Додати доповнення до заявки (тільки власник)' })
+  addInfo(
+    @Param('id') id: string,
+    @Body() dto: AddInfoRequestDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.requestsService.addInfo(id, dto, user);
+  }
+
+  @Patch(':id/additional-info/:infoId')
+  @ApiOperation({ summary: 'Редагувати доповнення (протягом 30 хв)' })
+  updateAdditionalInfo(
+    @Param('id') id: string,
+    @Param('infoId') infoId: string,
+    @Body() dto: AddInfoRequestDto,
+    @CurrentUser() user: User,
+  ) {
+    return this.requestsService.updateAdditionalInfo(id, infoId, dto, user);
+  }
+
+  @Delete(':id/additional-info/:infoId')
+  @ApiOperation({ summary: 'Видалити доповнення (протягом 30 хв)' })
+  removeAdditionalInfo(
+    @Param('id') id: string,
+    @Param('infoId') infoId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.requestsService.removeAdditionalInfo(id, infoId, user);
   }
 
   @Delete(':id')
@@ -88,5 +119,14 @@ export class RequestsController {
     @CurrentUser() user: User,
   ): Promise<Request> {
     return this.requestsService.confirmCompletion(id, user);
+  }
+
+  @Post(':id/return-to-progress')
+  @ApiOperation({ summary: 'Повернути заявку в роботу (скасувати перевірку)' })
+  returnToProgress(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ): Promise<Request> {
+    return this.requestsService.returnToProgress(id, user);
   }
 }

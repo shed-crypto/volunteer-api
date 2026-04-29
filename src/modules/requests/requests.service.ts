@@ -5,14 +5,16 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { v4 as uuidv4 } from 'uuid';
 import { Request } from './entities/request.entity';
 import { User } from '@modules/users/entities/user.entity';
 import {
   RequestStatus,
   ClearanceLevel,
   SystemRole,
+  AssignmentStatus,
 } from '@common/enums';
-import { CreateRequestDto } from './dto/create-request.dto';
+import { CreateRequestDto, AddInfoRequestDto } from './dto/create-request.dto';
 import { UpdateRequestDto } from './dto/update-request.dto';
 import { FindRequestsDto } from './dto/find-requests.dto';
 
@@ -79,9 +81,13 @@ export class RequestsService {
       .leftJoinAndSelect('request.tasks', 'tasks')
       .where('request.deleted_at IS NULL');
 
-    if (dto.status)   qb.andWhere('request.status = :status',     { status: dto.status });
-    if (dto.category) qb.andWhere('request.category = :category', { category: dto.category });
-    if (dto.urgency)  qb.andWhere('request.urgency = :urgency',   { urgency: dto.urgency });
+    if (dto.status)    qb.andWhere('request.status = :status',     { status: dto.status });
+    if (dto.category)  qb.andWhere('request.category = :category', { category: dto.category });
+    if (dto.urgency)   qb.andWhere('request.urgency = :urgency',   { urgency: dto.urgency });
+    if (dto.creatorId) qb.andWhere('request.creatorId = :creatorId', { creatorId: dto.creatorId });
+    if (dto.excludeCreatorId) {
+      qb.andWhere('request.creatorId != :excludeCreatorId', { excludeCreatorId: dto.excludeCreatorId });
+    }
 
     if (dto.search) {
       qb.andWhere(
@@ -149,11 +155,25 @@ export class RequestsService {
   // ─── Оновлення ────────────────────────────────────────────────────────────
 
   async update(id: string, dto: UpdateRequestDto, requester: User): Promise<Request> {
-    const request = await this.requestRepository.findOne({ where: { id } });
+    const request = await this.requestRepository.findOne({
+      where: { id },
+      relations: ['tasks', 'tasks.assignments'],
+    });
     if (!request) throw new NotFoundException(`Заявку ${id} не знайдено`);
 
     if (request.creatorId !== requester.id && requester.systemRole !== SystemRole.ADMIN) {
       throw new ForbiddenException('Немає прав для редагування цієї заявки');
+    }
+
+    // FR-09: обмеження редагування — не можна редагувати якщо хтось уже взяв у роботу
+    const hasActiveAssignments = request.tasks?.some((task) =>
+      task.assignments?.some((a) => a.status !== AssignmentStatus.WITHDRAWN),
+    );
+
+    if (hasActiveAssignments && requester.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException(
+        'Не можна редагувати заявку, яку вже взяли в роботу волонтери. Додайте інформацію через коментарі або чат.',
+      );
     }
 
     Object.assign(request, dto);
@@ -177,6 +197,92 @@ export class RequestsService {
     }
 
     return saved;
+  }
+
+  async addInfo(id: string, dto: AddInfoRequestDto, requester: User): Promise<Request> {
+    const request = await this.requestRepository.findOne({ where: { id } });
+    if (!request) throw new NotFoundException(`Заявку ${id} не знайдено`);
+
+    if (request.creatorId !== requester.id && requester.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException('Тільки власник або адміністратор може доповнювати інформацію');
+    }
+
+    if (!request.additionalInfo) request.additionalInfo = [];
+    request.additionalInfo.push({
+      id: uuidv4(),
+      text: dto.text,
+      createdAt: new Date(),
+    });
+
+    return await this.requestRepository.save(request);
+  }
+
+  async updateAdditionalInfo(
+    id: string,
+    infoId: string,
+    dto: AddInfoRequestDto,
+    requester: User,
+  ): Promise<Request> {
+    const request = await this.requestRepository.findOne({ where: { id } });
+    if (!request) throw new NotFoundException(`Заявку ${id} не знайдено`);
+
+    if (request.creatorId !== requester.id && requester.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException('Тільки власник або адміністратор може редагувати доповнення');
+    }
+
+    const infoIndex = request.additionalInfo.findIndex((info) => info.id === infoId);
+    if (infoIndex === -1) throw new NotFoundException(`Доповнення не знайдено`);
+
+    const info = request.additionalInfo[infoIndex];
+
+    // Перевірка 30 хвилин для не-адмінів
+    if (requester.systemRole !== SystemRole.ADMIN) {
+      const now = new Date();
+      const createdAt = new Date(info.createdAt);
+      const diffMs = now.getTime() - createdAt.getTime();
+      const diffMins = diffMs / (1000 * 60);
+
+      if (diffMins > 30) {
+        throw new ForbiddenException('Редагування можливе лише протягом 30 хвилин після створення');
+      }
+    }
+
+    request.additionalInfo[infoIndex] = {
+      ...info,
+      text: dto.text,
+      updatedAt: new Date(),
+    };
+
+    return await this.requestRepository.save(request);
+  }
+
+  async removeAdditionalInfo(id: string, infoId: string, requester: User): Promise<Request> {
+    const request = await this.requestRepository.findOne({ where: { id } });
+    if (!request) throw new NotFoundException(`Заявку ${id} не знайдено`);
+
+    if (request.creatorId !== requester.id && requester.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException('Тільки власник або адміністратор може видаляти доповнення');
+    }
+
+    const infoIndex = request.additionalInfo.findIndex((info) => info.id === infoId);
+    if (infoIndex === -1) throw new NotFoundException(`Доповнення не знайдено`);
+
+    const info = request.additionalInfo[infoIndex];
+
+    // Перевірка 30 хвилин для не-адмінів
+    if (requester.systemRole !== SystemRole.ADMIN) {
+      const now = new Date();
+      const createdAt = new Date(info.createdAt);
+      const diffMs = now.getTime() - createdAt.getTime();
+      const diffMins = diffMs / (1000 * 60);
+
+      if (diffMins > 30) {
+        throw new ForbiddenException('Видалення можливе лише протягом 30 хвилин після створення');
+      }
+    }
+
+    request.additionalInfo.splice(infoIndex, 1);
+    return await this.requestRepository.save(request);
   }
 
   // ─── Видалення ────────────────────────────────────────────────────────────
@@ -212,6 +318,18 @@ export class RequestsService {
     }
 
     request.status = RequestStatus.COMPLETED;
+    return await this.requestRepository.save(request);
+  }
+
+  async returnToProgress(id: string, requester: User): Promise<Request> {
+    if (requester.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException('Тільки адміністратор може скасувати перевірку');
+    }
+
+    const request = await this.requestRepository.findOne({ where: { id } });
+    if (!request) throw new NotFoundException(`Заявку ${id} не знайдено`);
+
+    request.status = RequestStatus.IN_PROGRESS;
     return await this.requestRepository.save(request);
   }
 

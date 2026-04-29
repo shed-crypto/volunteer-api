@@ -24,6 +24,16 @@ export class FindRequestsDto {
   @IsString()
   search?: string;
 
+  @ApiPropertyOptional({ description: 'ID творця заявки' })
+  @IsOptional()
+  @IsString()
+  creatorId?: string;
+
+  @ApiPropertyOptional({ description: 'Виключити заявки цього творця' })
+  @IsOptional()
+  @IsString()
+  excludeCreatorId?: string;
+
   @ApiPropertyOptional({ description: 'Широта центру пошуку' })
   @IsOptional()
   @IsNumber()

@@ -80,6 +80,9 @@ export class Task extends BaseEntity {
   @Column({ name: 'last_synced_at', type: 'timestamptz', nullable: true })
   lastSyncedAt: Date;
 
+  @Column({ name: 'pending_review_at', type: 'timestamptz', nullable: true })
+  pendingReviewAt: Date;
+
   @OneToMany(() => TaskAssignment, (assignment) => assignment.task, {
     cascade: true,
   })

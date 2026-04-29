@@ -65,6 +65,13 @@ export class CreateRequestDto {
 
   @ApiPropertyOptional()
   @IsOptional()
-  @IsUrl()
+  @IsString()
   fundraisingUrl?: string;
+}
+
+export class AddInfoRequestDto {
+  @ApiProperty({ example: 'Додаткова інформація: машина зламалась, потрібна допомога з буксируванням.' })
+  @IsString()
+  @MinLength(3)
+  text: string;
 }

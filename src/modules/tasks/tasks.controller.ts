@@ -6,8 +6,10 @@ import {
 import {
   ApiTags, ApiOperation, ApiBearerAuth,
 } from '@nestjs/swagger';
+import { TaskStatus } from '@common/enums';
 import { TasksService } from './tasks.service';
 import { CreateTaskDto, AssignTaskDto, DelegateTaskDto } from './dto/create-task.dto';
+import { UpdateTaskDto } from './dto/update-task.dto';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { CurrentUser } from '@common/decorators/current-user.decorator';
 import { User } from '@modules/users/entities/user.entity';
@@ -55,6 +57,16 @@ export class TasksController {
     return this.tasksService.findById(id);
   }
 
+  @Patch('tasks/:id')
+  @ApiOperation({ summary: 'Редагувати підзадачу (тільки якщо немає активних волонтерів)' })
+  update(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTaskDto,
+    @CurrentUser() user: User,
+  ): Promise<Task> {
+    return this.tasksService.update(id, dto, user);
+  }
+
   // ─── Взяти задачу в роботу (ключовий Sequence) ───────────────────────────
 
   @Post('tasks/:id/assign')
@@ -92,6 +104,25 @@ export class TasksController {
     return this.tasksService.completeTask(id, user);
   }
 
+  @Patch('tasks/:id/status')
+  @ApiOperation({ summary: 'Адмін: примусово змінити статус підзадачі' })
+  updateStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: { status: TaskStatus },
+    @CurrentUser() user: User,
+  ): Promise<Task> {
+    return this.tasksService.updateTaskStatusAdmin(id, body.status, user);
+  }
+
+  @Patch('tasks/:id/return')
+  @ApiOperation({ summary: 'Повернути підзадачу в роботу (PENDING_REVIEW → IN_PROGRESS)' })
+  returnToProgress(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ): Promise<Task> {
+    return this.tasksService.returnToProgress(id, user);
+  }
+
   // ─── Підтвердити завершення задачі (автор заявки → DONE) ─────────────────
 
   @Patch('tasks/:id/confirm')
@@ -103,6 +134,24 @@ export class TasksController {
     @CurrentUser() user: User,
   ): Promise<Task> {
     return this.tasksService.confirmTaskCompletion(id, user);
+  }
+
+  @Patch('tasks/:id/cancel')
+  @ApiOperation({ summary: 'Скасувати виконання підзадачі (status → CANCELLED)' })
+  cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ): Promise<Task> {
+    return this.tasksService.cancelTask(id, user);
+  }
+
+  @Patch('tasks/:id/renew')
+  @ApiOperation({ summary: 'Поновити скасовану підзадачу (status → TODO)' })
+  renew(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ): Promise<Task> {
+    return this.tasksService.renewTask(id, user);
   }
 
   // ─── Відхилити результат (автор → повернення IN_PROGRESS) (FR-09d) ─────────
