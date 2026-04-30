@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Request } from './entities/request.entity';
+import { SavedRequest } from './entities/saved-request.entity';
 import { User } from '@modules/users/entities/user.entity';
 import {
   RequestStatus,
@@ -38,6 +39,8 @@ export class RequestsService {
   constructor(
     @InjectRepository(Request)
     private readonly requestRepository: Repository<Request>,
+    @InjectRepository(SavedRequest)
+    private readonly savedRequestRepository: Repository<SavedRequest>,
   ) {}
 
   // ─── Створення заявки ─────────────────────────────────────────────────────
@@ -296,6 +299,30 @@ export class RequestsService {
     }
 
     await this.requestRepository.softDelete(id);
+  }
+
+  // ─── Saved Requests ────────────────────────────────────────────────────────
+  async saveRequest(requestId: string, userId: string): Promise<void> {
+    const exists = await this.savedRequestRepository.findOne({ where: { requestId, userId } });
+    if (!exists) {
+      const saved = this.savedRequestRepository.create({ requestId, userId });
+      await this.savedRequestRepository.save(saved);
+    }
+  }
+
+  async unsaveRequest(requestId: string, userId: string): Promise<void> {
+    await this.savedRequestRepository.delete({ requestId, userId });
+  }
+
+  async getSavedRequests(userId: string, limit: number = 50, offset: number = 0): Promise<Request[]> {
+    const saved = await this.savedRequestRepository.find({
+      where: { userId },
+      relations: ['request'],
+      take: limit,
+      skip: offset,
+      order: { savedAt: 'DESC' },
+    });
+    return saved.map((s) => s.request);
   }
 
   // ─── Життєвий цикл (Request Lifecycle) ──────────────────────────────────────

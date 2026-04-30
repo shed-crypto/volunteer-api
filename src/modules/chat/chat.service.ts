@@ -8,6 +8,7 @@ import { Chat } from './entities/chat.entity';
 import { Message } from './entities/message.entity';
 import { User } from '@modules/users/entities/user.entity';
 import { ChatType, SystemRole } from '@common/enums';
+import { ChatGateway } from './chat.gateway';
 
 @Injectable()
 export class ChatService {
@@ -15,6 +16,7 @@ export class ChatService {
     @InjectRepository(Chat) private readonly chatRepo: Repository<Chat>,
     @InjectRepository(Message) private readonly messageRepo: Repository<Message>,
     @InjectRepository(User) private readonly userRepo: Repository<User>,
+    private readonly chatGateway: ChatGateway,
   ) {}
 
   /** Усі чати поточного користувача */
@@ -70,6 +72,8 @@ export class ChatService {
     const qb = this.messageRepo
       .createQueryBuilder('msg')
       .leftJoinAndSelect('msg.sender', 'sender')
+      .leftJoinAndSelect('msg.replyTo', 'replyTo')
+      .leftJoinAndSelect('replyTo.sender', 'replyToSender')
       .where('msg.chatId = :chatId', { chatId });
 
     if (beforeId) {
@@ -91,32 +95,49 @@ export class ChatService {
   async sendMessage(
     chatId: string,
     user: User,
-    dto: { content: string; attachmentUrl?: string; messageType?: string },
+    dto: { content: string; attachmentUrl?: string; messageType?: string; replyToId?: string },
   ): Promise<Message> {
     await this.ensureParticipant(chatId, user.id);
 
+    // Явно визначаємо тип повідомлення на основі наявності вкладення
+    const messageType = dto.attachmentUrl ? 'attachment' : 'text';
+    
     const message = this.messageRepo.create({
       chatId,
       senderId: user.id,
       content: dto.content,
       attachmentUrl: dto.attachmentUrl || null,
-      messageType: dto.messageType || 'text',
+      messageType: messageType,
+      messageStatus: 'sent', // Завжди sent по замовчуванню
+      replyToId: dto.replyToId || null,
     });
 
-    return this.messageRepo.save(message);
+    const saved = await this.messageRepo.save(message);
+    
+    // Повертаємо з усіма зв'язками для коректного відображення фронтендом
+    return this.messageRepo.findOne({
+      where: { id: saved.id },
+      relations: ['sender', 'replyTo', 'replyTo.sender'],
+    });
   }
 
     /** Позначити повідомлення як прочитані */
     async markAsRead(chatId: string, user: User): Promise<void> {
       await this.ensureParticipant(chatId, user.id);
 
-      await this.messageRepo.query(
+      const result = await this.messageRepo.query(
         `UPDATE "messages" 
          SET "read_by" = array_append(COALESCE("read_by", '{}'::text[]), $1)
          WHERE "chat_id" = $2 
-         AND NOT ($1 = ANY(COALESCE("read_by", '{}'::text[])))`,
+         AND NOT ($1 = ANY(COALESCE("read_by", '{}'::text[])))
+         RETURNING "id"`,
         [user.id, chatId],
       );
+
+      if (result.length > 0) {
+        const updatedIds = result.map((row: any) => row.id);
+        this.chatGateway.sendMessagesRead(chatId, user.id, updatedIds);
+      }
     }
 
   private async ensureParticipant(chatId: string, userId: string): Promise<void> {

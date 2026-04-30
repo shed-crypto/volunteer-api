@@ -53,4 +53,11 @@ senderId: string;
   /** URL вкладення (фото звіту тощо) */
   @Column({ name: 'attachment_url', type: 'varchar', length: 1000, nullable: true })
   attachmentUrl: string;
+
+  @Column({ name: 'reply_to_id', type: 'uuid', nullable: true })
+  replyToId: string;
+
+  @ManyToOne(() => Message, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'reply_to_id' })
+  replyTo: Message;
 }

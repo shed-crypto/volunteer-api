@@ -43,6 +43,16 @@ export class RequestsController {
     return this.requestsService.findAll(dto, user);
   }
 
+  @Get('saved')
+  @ApiOperation({ summary: 'Отримати список збережених заявок' })
+  getSavedRequests(
+    @Query('limit') limit: number,
+    @Query('offset') offset: number,
+    @CurrentUser() user: User,
+  ): Promise<Request[]> {
+    return this.requestsService.getSavedRequests(user.id, limit, offset);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Деталі заявки з усіма підзадачами' })
   findOne(
@@ -101,6 +111,24 @@ export class RequestsController {
     @CurrentUser() user: User,
   ): Promise<void> {
     return this.requestsService.remove(id, user);
+  }
+
+  @Post(':id/save')
+  @ApiOperation({ summary: 'Зберегти заявку' })
+  saveRequest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ): Promise<void> {
+    return this.requestsService.saveRequest(id, user.id);
+  }
+
+  @Delete(':id/save')
+  @ApiOperation({ summary: 'Видалити заявку зі збережених' })
+  unsaveRequest(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ): Promise<void> {
+    return this.requestsService.unsaveRequest(id, user.id);
   }
 
   @Post(':id/pending-review')

@@ -39,6 +39,11 @@ class CreateMessageDto {
   @IsString()
   @IsOptional()
   messageType?: string;
+
+  @ApiPropertyOptional({ description: 'UUID повідомлення на яке відповідають' })
+  @IsUUID()
+  @IsOptional()
+  replyToId?: string;
 }
 
 // ─── Multer: зберігаємо файли чату у uploads/chat ────────────────────────────

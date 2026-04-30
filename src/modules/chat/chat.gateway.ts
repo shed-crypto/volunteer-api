@@ -116,7 +116,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   async handleMessage(
     @ConnectedSocket() client: Socket,
     @MessageBody()
-    data: { chatId: string; content: string; attachmentUrl?: string },
+    data: { chatId: string; content: string; attachmentUrl?: string; replyToId?: string },
   ): Promise<void> {
     const { userId, fullName } = client.data;
 
@@ -128,7 +128,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       .getOne();
 
     if (!chat) {
-      // Якщо не учасник, перевіряємо чи є адміном для таск-чатів
       const userWithRole = await this.userRepository.findOne({
         where: { id: userId },
         select: ['id', 'systemRole']
@@ -139,7 +138,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         select: ['id', 'type']
       });
       
-      // Дозволяємо адміну писати в таск-чатах
       if (!(userWithRole?.systemRole === SystemRole.ADMIN && chatWithType?.type === ChatType.TASK_CHAT)) {
         throw new WsException('Немає доступу до цього чату');
       }
@@ -150,8 +148,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       chatId: data.chatId,
       senderId: userId,
       content: data.content,
-      attachmentUrl: data.attachmentUrl,
+      attachmentUrl: data.attachmentUrl || null,
       messageType: data.attachmentUrl ? 'attachment' : 'text',
+      replyToId: data.replyToId || null,
     });
 
     // Broadcast у кімнату чату (всім учасникам)
@@ -164,10 +163,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       attachmentUrl: message.attachmentUrl,
       messageType: message.messageType,
       sentAt: message.sentAt,
+      replyToId: message.replyToId,
     });
   }
 
   // ─── "Друкує..." ──────────────────────────────────────────────────────────
+
+  // Публічний метод для повідомлення про прочитані повідомлення
+  sendMessagesRead(chatId: string, readerId: string, messageIds: string[]) {
+    this.server.to(`chat:${chatId}`).emit('messages_read', { chatId, readerId, messageIds });
+  }
 
   @SubscribeMessage('typing')
   handleTyping(
