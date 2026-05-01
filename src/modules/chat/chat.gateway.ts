@@ -36,7 +36,7 @@ import { ChatType, SystemRole } from '@common/enums';
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
-  private server: Server;
+  public server: Server;
 
   private readonly logger = new Logger(ChatGateway.name);
 
@@ -118,52 +118,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody()
     data: { chatId: string; content: string; attachmentUrl?: string; replyToId?: string },
   ): Promise<void> {
-    const { userId, fullName } = client.data;
-
-    // Перевіряємо, чи є користувач учасником чату або адмін у таск-чаті
-    const chat = await this.chatRepository
-      .createQueryBuilder('chat')
-      .innerJoin('chat.participants', 'p', 'p.id = :userId', { userId })
-      .where('chat.id = :chatId', { chatId: data.chatId })
-      .getOne();
-
-    if (!chat) {
-      const userWithRole = await this.userRepository.findOne({
-        where: { id: userId },
-        select: ['id', 'systemRole']
-      });
-      
-      const chatWithType = await this.chatRepository.findOne({
-        where: { id: data.chatId },
-        select: ['id', 'type']
-      });
-      
-      if (!(userWithRole?.systemRole === SystemRole.ADMIN && chatWithType?.type === ChatType.TASK_CHAT)) {
-        throw new WsException('Немає доступу до цього чату');
-      }
-    }
-
-    // Зберігаємо повідомлення в БД
-    const message = await this.messageRepository.save({
+    // Гарантуємо, що через WS повідомлення НЕ зберігається в БД, 
+    // бо воно вже прийшло через REST API. 
+    // Ми лише транслюємо його далі іншим клієнтам.
+    
+    this.server.to(`chat:${data.chatId}`).emit('new_message', {
       chatId: data.chatId,
-      senderId: userId,
+      senderId: client.data.userId,
+      senderName: client.data.fullName,
       content: data.content,
       attachmentUrl: data.attachmentUrl || null,
       messageType: data.attachmentUrl ? 'attachment' : 'text',
+      sentAt: new Date().toISOString(),
       replyToId: data.replyToId || null,
-    });
-
-    // Broadcast у кімнату чату (всім учасникам)
-    this.server.to(`chat:${data.chatId}`).emit('new_message', {
-      id: message.id,
-      chatId: message.chatId,
-      senderId: userId,
-      senderName: fullName,
-      content: message.content,
-      attachmentUrl: message.attachmentUrl,
-      messageType: message.messageType,
-      sentAt: message.sentAt,
-      replyToId: message.replyToId,
     });
   }
 

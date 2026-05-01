@@ -1,18 +1,20 @@
 import {
-  Controller, Get, Post, Delete,
-  Body, Param, UseGuards,
+  Controller, Get, Post, Delete, Patch,
+  Body, Param, UseGuards, Query,
   ParseUUIDPipe, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import {
   IsString, IsOptional, IsUUID, IsEnum,
-  IsNumber, Min, Max, MaxLength,
+  IsNumber, Min, Max, MaxLength, IsBoolean,
 } from 'class-validator';
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { OrganizationsService } from './organizations.service';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
+import { OrganizationRoleGuard } from '@common/guards/organization-role.guard';
 import { CurrentUser } from '@common/decorators/current-user.decorator';
+import { Roles } from '@common/decorators/roles.decorator';
 import { User } from '@modules/users/entities/user.entity';
 import { Organization } from './entities/organization.entity';
 import { OrganizationMember } from './entities/organization-member.entity';
@@ -38,6 +40,19 @@ class CreateHubDto {
   @ApiPropertyOptional() @IsOptional() @IsString() address?: string;
   @ApiProperty() @IsNumber() @Min(-90) @Max(90) @Type(() => Number) latitude: number;
   @ApiProperty() @IsNumber() @Min(-180) @Max(180) @Type(() => Number) longitude: number;
+}
+
+class UpdateOrgDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() name?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
+}
+
+class UpdateOrgSettingsDto {
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() allowPublicJoin?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() requireJoinApproval?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() memberInviteAllowed?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() subgroupCreationAllowed?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() mediaUploadAllowed?: boolean;
 }
 
 // ─── Контролер ────────────────────────────────────────────────────────────────
@@ -123,5 +138,62 @@ export class OrganizationsController {
     @CurrentUser() user: User,
   ): Promise<Hub> {
     return this.orgsService.createHub(id, dto, user);
+  }
+
+  // ─── Нові ендпоінти ────────────────────────────────────────────────────────
+
+  @Get('search/query')
+  @ApiOperation({ summary: 'Пошук організацій' })
+  search(@Query('q') q: string) {
+    return this.orgsService.search(q);
+  }
+
+  @Patch(':id')
+  @UseGuards(OrganizationRoleGuard)
+  @Roles(OrgRole.LEADER)
+  @ApiOperation({ summary: 'Редагувати організацію' })
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateOrgDto) {
+    return this.orgsService.update(id, dto);
+  }
+
+  @Get(':id/settings')
+  @UseGuards(OrganizationRoleGuard)
+  @Roles(OrgRole.LEADER, OrgRole.COORDINATOR)
+  getSettings(@Param('id', ParseUUIDPipe) id: string) {
+    return this.orgsService.getSettings(id);
+  }
+
+  @Patch(':id/settings')
+  @UseGuards(OrganizationRoleGuard)
+  @Roles(OrgRole.LEADER)
+  updateSettings(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateOrgSettingsDto) {
+    return this.orgsService.updateSettings(id, dto);
+  }
+
+  @Post(':id/join')
+  @ApiOperation({ summary: 'Запит на вступ' })
+  join(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User, @Body('message') message?: string) {
+    return this.orgsService.createJoinRequest(id, user, message);
+  }
+
+  @Get(':id/join-requests')
+  @UseGuards(OrganizationRoleGuard)
+  @Roles(OrgRole.LEADER, OrgRole.COORDINATOR)
+  getRequests(@Param('id', ParseUUIDPipe) id: string) {
+    return this.orgsService.getJoinRequests(id);
+  }
+
+  @Post(':id/join-requests/:requestId/approve')
+  @UseGuards(OrganizationRoleGuard)
+  @Roles(OrgRole.LEADER, OrgRole.COORDINATOR)
+  approveRequest(@Param('id') id: string, @Param('requestId') reqId: string, @CurrentUser() user: User, @Body('comment') comment?: string) {
+    return this.orgsService.handleJoinRequest(reqId, true, user, comment);
+  }
+
+  @Post(':id/join-requests/:requestId/reject')
+  @UseGuards(OrganizationRoleGuard)
+  @Roles(OrgRole.LEADER, OrgRole.COORDINATOR)
+  rejectRequest(@Param('id') id: string, @Param('requestId') reqId: string, @CurrentUser() user: User, @Body('comment') comment?: string) {
+    return this.orgsService.handleJoinRequest(reqId, false, user, comment);
   }
 }

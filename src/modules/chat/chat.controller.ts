@@ -13,6 +13,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger'
 import { IsUUID, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ChatService } from './chat.service';
+import { ChatGateway } from './chat.gateway';
 import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { CurrentUser } from '@common/decorators/current-user.decorator';
 import { User } from '@modules/users/entities/user.entity';
@@ -64,7 +65,10 @@ const chatStorage = diskStorage({
 @UseGuards(JwtAuthGuard)
 @Controller('chats')
 export class ChatController {
-  constructor(private readonly chatService: ChatService) {}
+  constructor(
+    private readonly chatService: ChatService,
+    private readonly chatGateway: ChatGateway,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Всі чати поточного користувача' })
@@ -98,12 +102,27 @@ export class ChatController {
 
   @Post(':chatId/messages')
   @ApiOperation({ summary: 'Надіслати нове повідомлення в чат' })
-  sendMessage(
+  async sendMessage(
     @Param('chatId', ParseUUIDPipe) chatId: string,
     @Body() dto: CreateMessageDto,
     @CurrentUser() user: User,
   ): Promise<Message> {
-    return this.chatService.sendMessage(chatId, user, dto);
+    const message = await this.chatService.sendMessage(chatId, user, dto);
+    
+    // Транслюємо через WebSocket
+    this.chatGateway.server.to(`chat:${chatId}`).emit('new_message', {
+      id: message.id,
+      chatId: message.chatId,
+      senderId: message.senderId,
+      senderName: user.fullName,
+      content: message.content,
+      attachmentUrl: message.attachmentUrl,
+      messageType: message.messageType,
+      sentAt: message.sentAt.toISOString(),
+      replyToId: message.replyToId,
+    });
+
+    return message;
   }
 
   /**

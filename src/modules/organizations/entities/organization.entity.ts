@@ -3,11 +3,14 @@ import {
   Column,
   ManyToOne,
   OneToMany,
+  OneToOne,
   JoinColumn,
 } from 'typeorm';
 import { BaseEntity } from '@common/entities/base.entity';
 import { OrganizationMember } from './organization-member.entity';
 import { Hub } from './hub.entity';
+import { OrganizationSettings } from './organization-settings.entity';
+import { OrganizationJoinRequest } from './organization-join-request.entity';
 
 /**
  * Організація / Волонтерська група (FR-03).
@@ -32,6 +35,9 @@ export class Organization extends BaseEntity {
   @Column({ name: 'logo_url', type: 'varchar', length: 1000, nullable: true })
   logoUrl: string;
 
+  @Column({ name: 'banner_url', type: 'varchar', length: 1000, nullable: true })
+  bannerUrl: string;
+
   /** Зв'язок "батько — дочірня організація" */
   @ManyToOne(() => Organization, (org) => org.children, {
     nullable: true,
@@ -53,6 +59,14 @@ export class Organization extends BaseEntity {
 
   @OneToMany(() => Hub, (hub) => hub.organization)
   hubs: Hub[];
+
+  @OneToOne(() => OrganizationSettings, (settings) => settings.organization, {
+    cascade: true,
+  })
+  settings: OrganizationSettings;
+
+  @OneToMany(() => OrganizationJoinRequest, (request) => request.organization)
+  joinRequests: OrganizationJoinRequest[];
 
   /** Чи публічна організація (видима в пошуку) */
   @Column({ name: 'is_public', type: 'boolean', default: true })

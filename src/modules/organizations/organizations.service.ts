@@ -3,10 +3,12 @@ import {
   ForbiddenException, ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Like } from 'typeorm';
 import { Organization } from './entities/organization.entity';
 import { OrganizationMember } from './entities/organization-member.entity';
 import { Hub } from './entities/hub.entity';
+import { OrganizationSettings } from './entities/organization-settings.entity';
+import { OrganizationJoinRequest } from './entities/organization-join-request.entity';
 import { User } from '@modules/users/entities/user.entity';
 import { OrgRole, SystemRole } from '@common/enums';
 
@@ -19,6 +21,10 @@ export class OrganizationsService {
     private readonly memberRepo: Repository<OrganizationMember>,
     @InjectRepository(Hub)
     private readonly hubRepo: Repository<Hub>,
+    @InjectRepository(OrganizationSettings)
+    private readonly settingsRepo: Repository<OrganizationSettings>,
+    @InjectRepository(OrganizationJoinRequest)
+    private readonly joinRequestRepo: Repository<OrganizationJoinRequest>,
   ) {}
 
   // ─── Створення організації ────────────────────────────────────────────────
@@ -36,6 +42,13 @@ export class OrganizationsService {
       this.orgRepo.create(dto),
     );
 
+    // Створюємо стандартні налаштування
+    await this.settingsRepo.save(
+      this.settingsRepo.create({
+        organizationId: org.id,
+      }),
+    );
+
     // Автоматично додаємо засновника як LEADER
     await this.memberRepo.save({
       organizationId: org.id,
@@ -44,6 +57,39 @@ export class OrganizationsService {
     });
 
     return org;
+  }
+
+  async search(query: string): Promise<Organization[]> {
+    return this.orgRepo.find({
+      where: [
+        { name: Like(`%${query}%`) },
+        { description: Like(`%${query}%`) },
+      ],
+      relations: ['settings'],
+    });
+  }
+
+  async update(id: string, dto: Partial<Organization>): Promise<Organization> {
+    const org = await this.findById(id);
+    Object.assign(org, dto);
+    return this.orgRepo.save(org);
+  }
+
+  async getSettings(orgId: string): Promise<OrganizationSettings> {
+    let settings = await this.settingsRepo.findOne({ where: { organizationId: orgId } });
+    if (!settings) {
+      // Lazy-initialization для старих організацій
+      settings = await this.settingsRepo.save(
+        this.settingsRepo.create({ organizationId: orgId }),
+      );
+    }
+    return settings;
+  }
+
+  async updateSettings(orgId: string, dto: Partial<OrganizationSettings>): Promise<OrganizationSettings> {
+    const settings = await this.getSettings(orgId);
+    Object.assign(settings, dto);
+    return this.settingsRepo.save(settings);
   }
 
   // ─── Дерево ієрархії ──────────────────────────────────────────────────────
@@ -72,7 +118,7 @@ export class OrganizationsService {
   async findById(id: string): Promise<Organization> {
     const org = await this.orgRepo.findOne({
       where: { id },
-      relations: ['members', 'members.user', 'children', 'hubs'],
+      relations: ['members', 'members.user', 'children', 'hubs', 'settings'],
     });
     if (!org) throw new NotFoundException('Організацію не знайдено');
     return org;
@@ -107,11 +153,81 @@ export class OrganizationsService {
     await this.memberRepo.delete({ organizationId: orgId, userId: targetUserId });
   }
 
+  async getMember(orgId: string, userId: string): Promise<OrganizationMember | null> {
+    return this.memberRepo.findOne({
+      where: { organizationId: orgId, userId },
+    });
+  }
+
+  async updateMemberRole(orgId: string, userId: string, role: OrgRole): Promise<OrganizationMember> {
+    const member = await this.getMember(orgId, userId);
+    if (!member) throw new NotFoundException('Учасника не знайдено');
+    member.orgRole = role;
+    return this.memberRepo.save(member);
+  }
+
   async getMembers(orgId: string): Promise<OrganizationMember[]> {
     return this.memberRepo.find({
       where: { organizationId: orgId, isActive: true },
       relations: ['user'],
     });
+  }
+
+  // ─── Запити на вступ ───────────────────────────────────────────────────────
+
+  async createJoinRequest(orgId: string, user: User, message?: string): Promise<OrganizationJoinRequest> {
+    const org = await this.findById(orgId);
+    const existing = await this.getMember(orgId, user.id);
+    if (existing) throw new ConflictException('Ви вже є учасником цієї організації');
+
+    const pending = await this.joinRequestRepo.findOne({
+      where: { organizationId: orgId, userId: user.id, status: 'pending' as any },
+    });
+    if (pending) throw new ConflictException('Ви вже надіслали запит на вступ');
+
+    return this.joinRequestRepo.save(
+      this.joinRequestRepo.create({
+        organizationId: orgId,
+        userId: user.id,
+        message,
+      }),
+    );
+  }
+
+  async getJoinRequests(orgId: string): Promise<OrganizationJoinRequest[]> {
+    return this.joinRequestRepo.find({
+      where: { organizationId: orgId },
+      relations: ['user'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async handleJoinRequest(
+    requestId: string,
+    approve: boolean,
+    reviewer: User,
+    comment?: string,
+  ): Promise<void> {
+    const request = await this.joinRequestRepo.findOne({
+      where: { id: requestId },
+    });
+    if (!request) throw new NotFoundException('Запит не знайдено');
+    if (request.status !== ('pending' as any)) throw new ConflictException('Запит вже оброблено');
+
+    request.status = approve ? ('approved' as any) : ('rejected' as any);
+    request.reviewedBy = reviewer;
+    request.reviewComment = comment;
+    request.reviewedAt = new Date();
+
+    await this.joinRequestRepo.save(request);
+
+    if (approve) {
+      await this.memberRepo.save({
+        organizationId: request.organizationId,
+        userId: request.userId,
+        orgRole: OrgRole.MEMBER,
+      });
+    }
   }
 
   // ─── Хаби / Склади ───────────────────────────────────────────────────────

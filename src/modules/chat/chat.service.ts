@@ -68,32 +68,36 @@ export class ChatService {
     beforeId?: string,
     sort: 'ASC' | 'DESC' = 'ASC',
   ): Promise<Message[]> {
-    await this.ensureParticipant(chatId, user.id);
+    try {
+      await this.ensureParticipant(chatId, user.id);
 
-    const qb = this.messageRepo
-      .createQueryBuilder('msg')
-      .leftJoinAndSelect('msg.sender', 'sender')
-      .leftJoinAndSelect('msg.replyTo', 'replyTo')
-      .leftJoinAndSelect('replyTo.sender', 'replyToSender')
-      .where('msg.chatId = :chatId', { chatId });
+      const qb = this.messageRepo
+        .createQueryBuilder('msg')
+        .leftJoinAndSelect('msg.sender', 'sender')
+        .leftJoinAndSelect('msg.replyTo', 'replyTo')
+        .where('msg.chatId = :chatId', { chatId });
 
-    if (beforeId) {
-      const cursor = await this.messageRepo.findOne({ where: { id: beforeId } });
-      if (cursor) {
-        if (sort === 'DESC') {
-          qb.andWhere('msg.sentAt > :ts', { ts: cursor.sentAt });
-        } else {
-          qb.andWhere('msg.sentAt < :ts', { ts: cursor.sentAt });
+      if (beforeId) {
+        const cursor = await this.messageRepo.findOne({ where: { id: beforeId } });
+        if (cursor) {
+          if (sort === 'DESC') {
+            qb.andWhere('msg.sentAt > :ts', { ts: cursor.sentAt });
+          } else {
+            qb.andWhere('msg.sentAt < :ts', { ts: cursor.sentAt });
+          }
         }
       }
-    }
 
-    const messages = await qb
-      .orderBy('msg.sentAt', sort)
-      .take(limit)
-      .getMany();
-      
-    return messages;
+      const messages = await qb
+        .orderBy('msg.sentAt', sort)
+        .take(limit)
+        .getMany();
+        
+      return messages;
+    } catch (e) {
+      console.error(`[ChatService.getMessages] Error for chatId ${chatId}:`, e);
+      throw e;
+    }
   }
 
   /** Надіслати нове повідомлення в чат */
