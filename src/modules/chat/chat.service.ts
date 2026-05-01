@@ -66,6 +66,7 @@ export class ChatService {
     user: User,
     limit = 50,
     beforeId?: string,
+    sort: 'ASC' | 'DESC' = 'ASC',
   ): Promise<Message[]> {
     await this.ensureParticipant(chatId, user.id);
 
@@ -79,12 +80,16 @@ export class ChatService {
     if (beforeId) {
       const cursor = await this.messageRepo.findOne({ where: { id: beforeId } });
       if (cursor) {
-        qb.andWhere('msg.sentAt < :ts', { ts: cursor.sentAt });
+        if (sort === 'DESC') {
+          qb.andWhere('msg.sentAt > :ts', { ts: cursor.sentAt });
+        } else {
+          qb.andWhere('msg.sentAt < :ts', { ts: cursor.sentAt });
+        }
       }
     }
 
     const messages = await qb
-      .orderBy('msg.sentAt', 'ASC')
+      .orderBy('msg.sentAt', sort)
       .take(limit)
       .getMany();
       

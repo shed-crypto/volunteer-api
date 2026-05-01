@@ -85,13 +85,15 @@ export class ChatController {
   @ApiOperation({ summary: 'Історія повідомлень чату (курсорна пагінація)' })
   @ApiQuery({ name: 'limit', required: false, example: 50 })
   @ApiQuery({ name: 'beforeId', required: false, description: 'UUID повідомлення-курсора' })
+  @ApiQuery({ name: 'sort', required: false, enum: ['ASC', 'DESC'], description: 'Порядок сортування' })
   getMessages(
     @Param('chatId', ParseUUIDPipe) chatId: string,
     @Query('limit') limit: string,
     @Query('beforeId') beforeId: string,
+    @Query('sort') sort: 'ASC' | 'DESC' = 'ASC',
     @CurrentUser() user: User,
   ): Promise<Message[]> {
-    return this.chatService.getMessages(chatId, user, parseInt(limit || '50', 10), beforeId);
+    return this.chatService.getMessages(chatId, user, parseInt(limit || '50', 10), beforeId, sort);
   }
 
   @Post(':chatId/messages')
