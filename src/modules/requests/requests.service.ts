@@ -370,7 +370,7 @@ export class RequestsService {
       this.getClearanceRank(user.clearanceLevel) >=
         this.getClearanceRank(request.requiredClearance);
 
-    if (!hasAccess && request.latitude && request.longitude) {
+    if (!hasAccess && request.latitude != null && request.longitude != null) {
       const seed = parseInt(request.id.replace(/-/g, '').substring(0, 8), 16);
       const angle = (seed % 360) * (Math.PI / 180);
       const distanceDeg = OBFUSCATION_RADIUS_M / 111320;
