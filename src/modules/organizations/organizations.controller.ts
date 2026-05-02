@@ -122,6 +122,18 @@ export class OrganizationsController {
     return this.orgsService.removeMember(id, userId, user);
   }
 
+  @Patch(':id/members/:userId/role')
+  @UseGuards(OrganizationRoleGuard)
+  @Roles(OrgRole.LEADER)
+  @ApiOperation({ summary: 'Змінити роль учасника' })
+  updateMemberRole(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
+    @Body('role') role: OrgRole,
+  ) {
+    return this.orgsService.updateMemberRole(id, userId, role);
+  }
+
   // ─── Хаби / Склади ────────────────────────────────────────────────────────
 
   @Get(':id/hubs')
@@ -140,6 +152,19 @@ export class OrganizationsController {
     return this.orgsService.createHub(id, dto, user);
   }
 
+  @Delete(':id/hubs/:hubId')
+  @UseGuards(OrganizationRoleGuard)
+  @Roles(OrgRole.LEADER, OrgRole.COORDINATOR)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Видалити склад/хаб' })
+  deleteHub(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('hubId', ParseUUIDPipe) hubId: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.orgsService.deleteHub(id, hubId, user);
+  }
+
   // ─── Нові ендпоінти ────────────────────────────────────────────────────────
 
   @Get('search/query')
@@ -156,6 +181,22 @@ export class OrganizationsController {
     return this.orgsService.update(id, dto);
   }
 
+  @Delete(':id')
+  @UseGuards(OrganizationRoleGuard)
+  @Roles(OrgRole.LEADER)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Видалити організацію' })
+  delete(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+    return this.orgsService.delete(id, user);
+  }
+
+  @Post(':id/leave')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Покинути організацію' })
+  leave(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: User) {
+    return this.orgsService.leave(id, user);
+  }
+
   @Get(':id/settings')
   @UseGuards(OrganizationRoleGuard)
   @Roles(OrgRole.LEADER, OrgRole.COORDINATOR)
@@ -166,8 +207,14 @@ export class OrganizationsController {
   @Patch(':id/settings')
   @UseGuards(OrganizationRoleGuard)
   @Roles(OrgRole.LEADER)
-  updateSettings(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateOrgSettingsDto) {
-    return this.orgsService.updateSettings(id, dto);
+  async updateSettings(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateOrgSettingsDto) {
+    console.log(`[OrganizationsController] Updating settings for ${id}, data:`, JSON.stringify(dto));
+    try {
+      return await this.orgsService.updateSettings(id, dto);
+    } catch (e) {
+      console.error(`[OrganizationsController] Error updating settings:`, e);
+      throw e;
+    }
   }
 
   @Post(':id/join')

@@ -10,7 +10,8 @@ import { Hub } from './entities/hub.entity';
 import { OrganizationSettings } from './entities/organization-settings.entity';
 import { OrganizationJoinRequest } from './entities/organization-join-request.entity';
 import { User } from '@modules/users/entities/user.entity';
-import { OrgRole, SystemRole } from '@common/enums';
+import { OrgRole, SystemRole, ChatType } from '@common/enums';
+import { ChatService } from '@modules/chat/chat.service';
 
 @Injectable()
 export class OrganizationsService {
@@ -25,6 +26,7 @@ export class OrganizationsService {
     private readonly settingsRepo: Repository<OrganizationSettings>,
     @InjectRepository(OrganizationJoinRequest)
     private readonly joinRequestRepo: Repository<OrganizationJoinRequest>,
+    private readonly chatService: ChatService,
   ) {}
 
   // ─── Створення організації ────────────────────────────────────────────────
@@ -56,6 +58,20 @@ export class OrganizationsService {
       orgRole: OrgRole.LEADER,
     });
 
+    // Створюємо чат організації
+    try {
+      const chat = await this.chatService.createGroupChat(
+        `Чат: ${org.name}`,
+        [creator.id],
+        ChatType.ORG_CHAT,
+        org.id,
+      );
+      org.chatId = chat.id;
+      await this.orgRepo.save(org);
+    } catch (e) {
+      console.error(`[OrganizationsService] Failed to create org chat:`, e);
+    }
+
     return org;
   }
 
@@ -73,6 +89,33 @@ export class OrganizationsService {
     const org = await this.findById(id);
     Object.assign(org, dto);
     return this.orgRepo.save(org);
+  }
+
+  async delete(id: string, requester: User): Promise<void> {
+    await this.checkLeaderOrAdmin(id, requester);
+    const org = await this.findById(id);
+    
+    if (org.children && org.children.length > 0) {
+      throw new ForbiddenException('Неможливо видалити організацію, яка має підгрупи. Спочатку видаліть або перенесіть їх.');
+    }
+    
+    await this.orgRepo.remove(org);
+  }
+
+  async leave(orgId: string, user: User): Promise<void> {
+    const membership = await this.getMember(orgId, user.id);
+    if (!membership) throw new NotFoundException('Ви не є учасником цієї організації');
+    
+    if (membership.orgRole === OrgRole.LEADER) {
+      const leaders = await this.memberRepo.count({
+        where: { organizationId: orgId, orgRole: OrgRole.LEADER }
+      });
+      if (leaders <= 1) {
+        throw new ForbiddenException('Ви останній лідер. Передайте права або видаліть організацію.');
+      }
+    }
+    
+    await this.memberRepo.remove(membership);
   }
 
   async getSettings(orgId: string): Promise<OrganizationSettings> {
@@ -250,6 +293,13 @@ export class OrganizationsService {
 
   async getHubs(orgId: string): Promise<Hub[]> {
     return this.hubRepo.find({ where: { organizationId: orgId } });
+  }
+
+  async deleteHub(orgId: string, hubId: string, requester: User): Promise<void> {
+    await this.checkLeaderOrAdmin(orgId, requester);
+    const hub = await this.hubRepo.findOne({ where: { id: hubId, organizationId: orgId } });
+    if (!hub) throw new NotFoundException('Хаб не знайдено в цій організації');
+    await this.hubRepo.remove(hub);
   }
 
   // ─── Перевірка прав ──────────────────────────────────────────────────────

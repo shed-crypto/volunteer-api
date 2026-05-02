@@ -29,6 +29,24 @@ export class ChatService {
       .getMany();
   }
 
+  /** Створити груповий чат (для організації або таска) */
+  async createGroupChat(
+    name: string,
+    participantIds: string[],
+    type: ChatType,
+    relatedId?: string,
+  ): Promise<Chat> {
+    const participants = await this.userRepo.findByIds(participantIds);
+    const chat = this.chatRepo.create({
+      name,
+      type,
+      participants,
+      relatedOrgId: type === ChatType.ORG_CHAT ? relatedId : null,
+      relatedRequestId: type === ChatType.TASK_CHAT ? relatedId : null,
+    });
+    return this.chatRepo.save(chat);
+  }
+
   /** Отримати або створити приватний чат між двома користувачами */
   async getOrCreateDirectChat(user: User, targetUserId: string): Promise<Chat> {
     // Шукаємо існуючий direct чат між цими двома
@@ -173,6 +191,11 @@ export class ChatService {
 
       // Allow admin access to task chats
       if (user?.systemRole === SystemRole.ADMIN && chatWithType?.type === ChatType.TASK_CHAT) {
+        return; // Allow access
+      }
+      
+      // Allow admin access to org chats
+      if (user?.systemRole === SystemRole.ADMIN && chatWithType?.type === ChatType.ORG_CHAT) {
         return; // Allow access
       }
       

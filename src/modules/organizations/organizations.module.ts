@@ -8,6 +8,7 @@ import { OrganizationSettings } from './entities/organization-settings.entity';
 import { OrganizationJoinRequest } from './entities/organization-join-request.entity';
 import { OrganizationsService } from './organizations.service';
 import { OrganizationsController } from './organizations.controller';
+import { ChatModule } from '@modules/chat/chat.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { OrganizationsController } from './organizations.controller';
       OrganizationSettings,
       OrganizationJoinRequest,
     ]),
+    ChatModule,
   ],
   controllers: [OrganizationsController],
   providers: [OrganizationsService],

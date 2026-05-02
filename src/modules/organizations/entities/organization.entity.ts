@@ -38,6 +38,9 @@ export class Organization extends BaseEntity {
   @Column({ name: 'banner_url', type: 'varchar', length: 1000, nullable: true })
   bannerUrl: string;
 
+  @Column({ name: 'chat_id', type: 'uuid', nullable: true })
+  chatId: string;
+
   /** Зв'язок "батько — дочірня організація" */
   @ManyToOne(() => Organization, (org) => org.children, {
     nullable: true,
