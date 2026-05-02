@@ -161,10 +161,36 @@ export class OrganizationsService {
   async findById(id: string): Promise<Organization> {
     const org = await this.orgRepo.findOne({
       where: { id },
-      relations: ['members', 'members.user', 'children', 'hubs', 'settings'],
+      relations: ['members', 'members.user', 'children', 'hubs', 'settings', 'parent'],
     });
     if (!org) throw new NotFoundException('Організацію не знайдено');
+    (org as any).parentOrg = org.parent
+      ? { id: org.parent.id, name: org.parent.name, parentOrgId: org.parent.parentOrgId }
+      : undefined;
+    (org as any).ancestors = await this.getAncestors(org.parentOrgId);
     return org;
+  }
+
+  private async getAncestors(parentOrgId?: string | null): Promise<Array<{ id: string; name: string; parentOrgId?: string }>> {
+    const ancestors: Array<{ id: string; name: string; parentOrgId?: string }> = [];
+    let currentParentId = parentOrgId;
+
+    while (currentParentId) {
+      const parent = await this.orgRepo.findOne({
+        where: { id: currentParentId },
+        select: ['id', 'name', 'parentOrgId'],
+      });
+      if (!parent) break;
+
+      ancestors.unshift({
+        id: parent.id,
+        name: parent.name,
+        parentOrgId: parent.parentOrgId,
+      });
+      currentParentId = parent.parentOrgId;
+    }
+
+    return ancestors;
   }
 
   // ─── Управління учасниками ────────────────────────────────────────────────
