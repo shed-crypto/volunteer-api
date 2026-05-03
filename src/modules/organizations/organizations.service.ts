@@ -303,7 +303,7 @@ export class OrganizationsService {
 
   async createHub(
     orgId: string,
-    dto: { name: string; description?: string; latitude: number; longitude: number; address?: string },
+    dto: { name: string; description?: string; latitude?: number; longitude?: number; address?: string; isPublic?: boolean },
     creator: User,
   ): Promise<Hub> {
     await this.checkLeaderOrAdmin(orgId, creator);
@@ -318,7 +318,21 @@ export class OrganizationsService {
   }
 
   async getHubs(orgId: string): Promise<Hub[]> {
-    return this.hubRepo.find({ where: { organizationId: orgId } });
+    return this.hubRepo.find({ where: { organizationId: orgId }, order: { createdAt: 'DESC' } });
+  }
+
+  async updateHub(
+    orgId: string,
+    hubId: string,
+    dto: Partial<{ name: string; description: string | null; latitude: number | null; longitude: number | null; address: string | null; isPublic: boolean; mediaUrl: string | null }>,
+    requester: User,
+  ): Promise<Hub> {
+    await this.checkLeaderOrAdmin(orgId, requester);
+    const hub = await this.hubRepo.findOne({ where: { id: hubId, organizationId: orgId } });
+    if (!hub) throw new NotFoundException('РҐР°Р± РЅРµ Р·РЅР°Р№РґРµРЅРѕ РІ С†С–Р№ РѕСЂРіР°РЅС–Р·Р°С†С–С—');
+
+    Object.assign(hub, dto);
+    return this.hubRepo.save(hub);
   }
 
   async deleteHub(orgId: string, hubId: string, requester: User): Promise<void> {

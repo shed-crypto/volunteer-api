@@ -2,8 +2,13 @@ import {
   Controller, Get, Post, Delete, Patch,
   Body, Param, UseGuards, Query,
   ParseUUIDPipe, HttpCode, HttpStatus,
+  UseInterceptors, UploadedFile, BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { existsSync, mkdirSync } from 'fs';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import {
   IsString, IsOptional, IsUUID, IsEnum,
   IsNumber, Min, Max, MaxLength, IsBoolean,
@@ -20,6 +25,24 @@ import { Organization } from './entities/organization.entity';
 import { OrganizationMember } from './entities/organization-member.entity';
 import { Hub } from './entities/hub.entity';
 import { OrgRole } from '@common/enums';
+
+function ensureUploadDir(path: string) {
+  if (!existsSync(path)) mkdirSync(path, { recursive: true });
+  return path;
+}
+
+function randomFileName(originalName: string) {
+  const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
+  return `${randomName}${extname(originalName)}`;
+}
+
+function imageFileFilter(req: unknown, file: Express.Multer.File, cb: (error: Error | null, acceptFile: boolean) => void) {
+  if (!file.mimetype?.startsWith('image/')) {
+    cb(new BadRequestException('Можна завантажувати тільки зображення'), false);
+    return;
+  }
+  cb(null, true);
+}
 
 // ─── Вбудовані DTO (невеликі класи зберігаємо тут для лаконічності) ──────────
 
@@ -38,13 +61,25 @@ class CreateHubDto {
   @ApiProperty() @IsString() @MaxLength(255) name: string;
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() address?: string;
-  @ApiProperty() @IsNumber() @Min(-90) @Max(90) @Type(() => Number) latitude: number;
-  @ApiProperty() @IsNumber() @Min(-180) @Max(180) @Type(() => Number) longitude: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(-90) @Max(90) @Type(() => Number) latitude?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(-180) @Max(180) @Type(() => Number) longitude?: number;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() isPublic?: boolean;
+  @ApiPropertyOptional() @IsOptional() @IsString() mediaUrl?: string | null;
+}
+
+class UpdateHubDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(255) name?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() address?: string;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(-90) @Max(90) @Type(() => Number) latitude?: number;
+  @ApiPropertyOptional() @IsOptional() @IsNumber() @Min(-180) @Max(180) @Type(() => Number) longitude?: number;
+  @ApiPropertyOptional() @IsOptional() @IsBoolean() isPublic?: boolean;
 }
 
 class UpdateOrgDto {
   @ApiPropertyOptional() @IsOptional() @IsString() name?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() logoUrl?: string | null;
 }
 
 class UpdateOrgSettingsDto {
@@ -152,6 +187,43 @@ export class OrganizationsController {
     return this.orgsService.createHub(id, dto, user);
   }
 
+  @Patch(':id/hubs/:hubId')
+  @UseGuards(OrganizationRoleGuard)
+  @Roles(OrgRole.LEADER, OrgRole.COORDINATOR)
+  @ApiOperation({ summary: 'Р РµРґР°РіСѓРІР°С‚Рё СЃРєР»Р°Рґ/С…Р°Р±' })
+  updateHub(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('hubId', ParseUUIDPipe) hubId: string,
+    @Body() dto: UpdateHubDto,
+    @CurrentUser() user: User,
+  ): Promise<Hub> {
+    return this.orgsService.updateHub(id, hubId, dto, user);
+  }
+
+  @Post(':id/hubs/:hubId/upload-media')
+  @UseGuards(OrganizationRoleGuard)
+  @Roles(OrgRole.LEADER, OrgRole.COORDINATOR)
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: (req, file, cb) => cb(null, ensureUploadDir('./uploads/hubs')),
+      filename: (req, file, cb) => cb(null, randomFileName(file.originalname)),
+    }),
+    fileFilter: imageFileFilter,
+  }))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+  async uploadHubMedia(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('hubId', ParseUUIDPipe) hubId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: User,
+  ) {
+    if (!file) throw new BadRequestException('Файл не передано');
+    const url = `/uploads/hubs/${file.filename}`;
+    await this.orgsService.updateHub(id, hubId, { mediaUrl: url }, user);
+    return { url };
+  }
+
   @Delete(':id/hubs/:hubId')
   @UseGuards(OrganizationRoleGuard)
   @Roles(OrgRole.LEADER, OrgRole.COORDINATOR)
@@ -242,5 +314,24 @@ export class OrganizationsController {
   @Roles(OrgRole.LEADER, OrgRole.COORDINATOR)
   rejectRequest(@Param('id') id: string, @Param('requestId') reqId: string, @CurrentUser() user: User, @Body('comment') comment?: string) {
     return this.orgsService.handleJoinRequest(reqId, false, user, comment);
+  }
+
+  @Post(':id/upload-logo')
+  @UseGuards(OrganizationRoleGuard)
+  @Roles(OrgRole.LEADER)
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: (req, file, cb) => cb(null, ensureUploadDir('./uploads/organizations')),
+      filename: (req, file, cb) => cb(null, randomFileName(file.originalname)),
+    }),
+    fileFilter: imageFileFilter,
+  }))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+  async uploadLogo(@Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Файл не передано');
+    const url = `/uploads/organizations/${file.filename}`;
+    await this.orgsService.update(id, { logoUrl: url });
+    return { url };
   }
 }

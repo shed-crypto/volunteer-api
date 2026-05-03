@@ -27,6 +27,9 @@ export class Hub extends BaseEntity {
   @Column({ name: 'address', type: 'varchar', length: 500, nullable: true })
   address: string;
 
+  @Column({ name: 'media_url', type: 'varchar', length: 1000, nullable: true })
+  mediaUrl: string;
+
   /**
    * Геопросторова точка PostGIS.
    * Тип geography дозволяє розраховувати відстані в метрах без проекцій.
