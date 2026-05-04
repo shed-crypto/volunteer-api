@@ -242,6 +242,20 @@ export class OrganizationsService {
     });
   }
 
+  async getMemberPrivileges(orgId: string, userId: string) {
+    const member = await this.getMember(orgId, userId);
+    const isLeader = member?.orgRole === OrgRole.LEADER;
+    const isCoordinator = member?.orgRole === OrgRole.COORDINATOR;
+    return {
+      canEdit: isLeader || isCoordinator,
+      canDelete: isLeader,
+      canManageMembers: isLeader || isCoordinator,
+      canManageHubs: isLeader || isCoordinator,
+      isLeader,
+      isCoordinator,
+    };
+  }
+
   // ─── Запити на вступ ───────────────────────────────────────────────────────
 
   async createJoinRequest(orgId: string, user: User, message?: string): Promise<OrganizationJoinRequest> {

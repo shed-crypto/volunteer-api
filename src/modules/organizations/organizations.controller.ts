@@ -80,6 +80,7 @@ class UpdateOrgDto {
   @ApiPropertyOptional() @IsOptional() @IsString() name?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() logoUrl?: string | null;
+  @ApiPropertyOptional() @IsOptional() @IsString() bannerUrl?: string | null;
 }
 
 class UpdateOrgSettingsDto {
@@ -332,6 +333,25 @@ export class OrganizationsController {
     if (!file) throw new BadRequestException('Файл не передано');
     const url = `/uploads/organizations/${file.filename}`;
     await this.orgsService.update(id, { logoUrl: url });
+    return { url };
+  }
+
+  @Post(':id/upload-banner')
+  @UseGuards(OrganizationRoleGuard)
+  @Roles(OrgRole.LEADER)
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: (req, file, cb) => cb(null, ensureUploadDir('./uploads/organizations')),
+      filename: (req, file, cb) => cb(null, randomFileName(file.originalname)),
+    }),
+    fileFilter: imageFileFilter,
+  }))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+  async uploadBanner(@Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File) {
+    if (!file) throw new BadRequestException('Файл не передано');
+    const url = `/uploads/organizations/${file.filename}`;
+    await this.orgsService.update(id, { bannerUrl: url });
     return { url };
   }
 }
