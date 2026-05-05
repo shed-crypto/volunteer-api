@@ -49,4 +49,7 @@ export class OrganizationMember extends BaseEntity {
   /** Запрошення прийнято? (false = pending invitation) */
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
+
+  @Column({ name: 'is_deputy', type: 'boolean', default: false })
+  isDeputy: boolean;
 }

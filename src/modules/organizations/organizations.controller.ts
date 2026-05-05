@@ -137,6 +137,16 @@ export class OrganizationsController {
     return this.orgsService.getMembers(id);
   }
 
+  @Get(':id/members/me/privileges')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Отримати мої права в організації' })
+  getMyPrivileges(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.orgsService.getMemberPrivileges(id, user.id);
+  }
+
   @Post(':id/members')
   @ApiOperation({ summary: 'Додати учасника до організації' })
   addMember(
@@ -166,8 +176,9 @@ export class OrganizationsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Body('role') role: OrgRole,
+    @Body('isDeputy') isDeputy: boolean,
   ) {
-    return this.orgsService.updateMemberRole(id, userId, role);
+    return this.orgsService.updateMemberRole(id, userId, role, isDeputy);
   }
 
   // ─── Хаби / Склади ────────────────────────────────────────────────────────

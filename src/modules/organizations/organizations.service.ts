@@ -228,10 +228,18 @@ export class OrganizationsService {
     });
   }
 
-  async updateMemberRole(orgId: string, userId: string, role: OrgRole): Promise<OrganizationMember> {
+  async updateMemberRole(orgId: string, userId: string, role: OrgRole, isDeputy?: boolean): Promise<OrganizationMember> {
     const member = await this.getMember(orgId, userId);
     if (!member) throw new NotFoundException('Учасника не знайдено');
     member.orgRole = role;
+    if (isDeputy !== undefined) {
+      member.isDeputy = isDeputy;
+    }
+    // Якщо роль — лідер, deputy скидається
+    if (role === OrgRole.LEADER) {
+      member.isDeputy = false;
+    }
+    console.log('Updating member in DB:', { orgId, userId, role, isDeputy: member.isDeputy });
     return this.memberRepo.save(member);
   }
 
@@ -246,13 +254,16 @@ export class OrganizationsService {
     const member = await this.getMember(orgId, userId);
     const isLeader = member?.orgRole === OrgRole.LEADER;
     const isCoordinator = member?.orgRole === OrgRole.COORDINATOR;
+    const isDeputy = member?.isDeputy ?? false;
+    
     return {
-      canEdit: isLeader || isCoordinator,
+      canEdit: isLeader || isCoordinator || isDeputy,
       canDelete: isLeader,
-      canManageMembers: isLeader || isCoordinator,
-      canManageHubs: isLeader || isCoordinator,
+      canManageMembers: isLeader || isCoordinator || isDeputy,
+      canManageHubs: isLeader || isCoordinator || isDeputy,
       isLeader,
       isCoordinator,
+      isDeputy,
     };
   }
 
@@ -343,7 +354,7 @@ export class OrganizationsService {
   ): Promise<Hub> {
     await this.checkLeaderOrAdmin(orgId, requester);
     const hub = await this.hubRepo.findOne({ where: { id: hubId, organizationId: orgId } });
-    if (!hub) throw new NotFoundException('РҐР°Р± РЅРµ Р·РЅР°Р№РґРµРЅРѕ РІ С†С–Р№ РѕСЂРіР°РЅС–Р·Р°С†С–С—');
+    if (!hub) throw new NotFoundException('Хаб не знайдено в цій організації');
 
     Object.assign(hub, dto);
     return this.hubRepo.save(hub);
@@ -355,8 +366,6 @@ export class OrganizationsService {
     if (!hub) throw new NotFoundException('Хаб не знайдено в цій організації');
     await this.hubRepo.remove(hub);
   }
-
-  // ─── Перевірка прав ──────────────────────────────────────────────────────
 
   private async checkLeaderOrAdmin(orgId: string, user: User): Promise<void> {
     if (user.systemRole === SystemRole.ADMIN) return;

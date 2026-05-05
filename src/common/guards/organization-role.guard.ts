@@ -22,6 +22,16 @@ export class OrganizationRoleGuard implements CanActivate {
     if (!membership) throw new ForbiddenException('Ви не є учасником цієї організації');
 
     const requiredRoles = this.reflector.get<OrgRole[]>('roles', context.getHandler());
+    
+    // Якщо вимагається роль ЛІДЕРА, дозволяємо також заступникам (якщо це не видалення/передача лідерства)
+    if (requiredRoles?.includes(OrgRole.LEADER) && membership.isDeputy) {
+      // Додаткова логіка: заступники не можуть видаляти організацію або передавати лідерство
+      const path = request.route.path;
+      if (!path.includes('delete') && !path.includes('transfer')) {
+        return true;
+      }
+    }
+
     if (requiredRoles && !requiredRoles.includes(membership.orgRole)) {
       throw new ForbiddenException('Недостатньо прав для виконання цієї дії');
     }
