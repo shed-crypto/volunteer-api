@@ -1,11 +1,13 @@
 import {
   Controller, Get, Post, Patch, Delete,
   Body, Param, Query, UseGuards,
-  ParseUUIDPipe, HttpCode, HttpStatus,
+  ParseUUIDPipe, HttpCode, HttpStatus, UseInterceptors, UploadedFiles,
 } from '@nestjs/common';
-import {
-  ApiTags, ApiOperation, ApiBearerAuth, ApiResponse,
-} from '@nestjs/swagger';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiConsumes } from '@nestjs/swagger';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { existsSync, mkdirSync } from 'fs';
 import { RequestsService } from './requests.service';
 import { CreateRequestDto, AddInfoRequestDto } from './dto/create-request.dto';
 import { UpdateRequestDto } from './dto/update-request.dto';
@@ -74,23 +76,55 @@ export class RequestsController {
 
   @Patch(':id/add-info')
   @ApiOperation({ summary: 'Додати доповнення до заявки (тільки власник)' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FilesInterceptor('attachments', 10, {
+    storage: diskStorage({
+      destination: (_req, _file, cb) => {
+        const dir = 'uploads/requests';
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+      },
+      filename: (_req, file, cb) => {
+        const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+        cb(null, `${unique}${extname(file.originalname)}`);
+      },
+    }),
+  }))
   addInfo(
     @Param('id') id: string,
     @Body() dto: AddInfoRequestDto,
+    @UploadedFiles() files: Array<Express.Multer.File>,
     @CurrentUser() user: User,
   ) {
-    return this.requestsService.addInfo(id, dto, user);
+    const attachments = files?.map(f => ({ url: `/uploads/requests/${f.filename}`, name: f.originalname, type: f.mimetype })) || [];
+    return this.requestsService.addInfo(id, { ...dto, attachments }, user);
   }
 
   @Patch(':id/additional-info/:infoId')
   @ApiOperation({ summary: 'Редагувати доповнення (протягом 30 хв)' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FilesInterceptor('attachments', 10, {
+    storage: diskStorage({
+      destination: (_req, _file, cb) => {
+        const dir = 'uploads/requests';
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+      },
+      filename: (_req, file, cb) => {
+        const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+        cb(null, `${unique}${extname(file.originalname)}`);
+      },
+    }),
+  }))
   updateAdditionalInfo(
     @Param('id') id: string,
     @Param('infoId') infoId: string,
     @Body() dto: AddInfoRequestDto,
+    @UploadedFiles() files: Array<Express.Multer.File>,
     @CurrentUser() user: User,
   ) {
-    return this.requestsService.updateAdditionalInfo(id, infoId, dto, user);
+    const attachments = files?.map(f => ({ url: `/uploads/requests/${f.filename}`, name: f.originalname, type: f.mimetype })) || [];
+    return this.requestsService.updateAdditionalInfo(id, infoId, { ...dto, attachments }, user);
   }
 
   @Delete(':id/additional-info/:infoId')

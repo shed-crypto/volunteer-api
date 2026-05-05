@@ -134,7 +134,7 @@ export class Request extends BaseEntity {
 
   /** Додаткова інформація, додана власником після створення (FR-09) */
   @Column({ name: 'additional_info', type: 'jsonb', nullable: true, default: [] })
-  additionalInfo: Array<{ id: string; text: string; createdAt: Date; updatedAt?: Date }>;
+  additionalInfo: Array<{ id: string; text: string; attachments: any[]; createdAt: Date; updatedAt?: Date }>;
 
   // Поля для офлайн-синхронізації (NFR-03)
   @Column({ name: 'last_synced_at', type: 'timestamptz', nullable: true })

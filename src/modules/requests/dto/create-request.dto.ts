@@ -74,4 +74,8 @@ export class AddInfoRequestDto {
   @IsString()
   @MinLength(3)
   text: string;
+
+  @ApiPropertyOptional({ type: 'array', items: { type: 'object' } })
+  @IsOptional()
+  attachments?: any[];
 }

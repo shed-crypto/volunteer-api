@@ -214,6 +214,7 @@ export class RequestsService {
     request.additionalInfo.push({
       id: uuidv4(),
       text: dto.text,
+      attachments: dto.attachments || [],
       createdAt: new Date(),
     });
 
@@ -253,6 +254,7 @@ export class RequestsService {
     request.additionalInfo[infoIndex] = {
       ...info,
       text: dto.text,
+      attachments: dto.attachments || info.attachments || [],
       updatedAt: new Date(),
     };
 
