@@ -27,11 +27,27 @@ export class RequestsController {
   @Post()
   @ApiOperation({ summary: 'Створити нову заявку на допомогу' })
   @ApiResponse({ status: 201, type: Request })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FilesInterceptor('attachments', 10, {
+    storage: diskStorage({
+      destination: (_req, _file, cb) => {
+        const dir = 'uploads/requests';
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+      },
+      filename: (_req, file, cb) => {
+        const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+        cb(null, `${unique}${extname(file.originalname)}`);
+      },
+    }),
+  }))
   create(
     @Body() dto: CreateRequestDto,
+    @UploadedFiles() files: Array<Express.Multer.File>,
     @CurrentUser() user: User,
   ): Promise<Request> {
-    return this.requestsService.create(dto, user);
+    const mediaUrls = files?.map(f => ({ url: `/uploads/requests/${f.filename}`, name: f.originalname, type: f.mimetype })) || [];
+    return this.requestsService.create({ ...dto, mediaUrls }, user);
   }
 
   @Get()
@@ -66,12 +82,28 @@ export class RequestsController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Редагувати заявку (тільки якщо немає активних волонтерів)' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FilesInterceptor('attachments', 10, {
+    storage: diskStorage({
+      destination: (_req, _file, cb) => {
+        const dir = 'uploads/requests';
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+      },
+      filename: (_req, file, cb) => {
+        const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+        cb(null, `${unique}${extname(file.originalname)}`);
+      },
+    }),
+  }))
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRequestDto,
+    @UploadedFiles() files: Array<Express.Multer.File>,
     @CurrentUser() user: User,
   ): Promise<Request> {
-    return this.requestsService.update(id, dto, user);
+    const mediaUrls = files?.map(f => ({ url: `/uploads/requests/${f.filename}`, name: f.originalname, type: f.mimetype })) || [];
+    return this.requestsService.update(id, { ...dto, mediaUrls }, user);
   }
 
   @Patch(':id/add-info')

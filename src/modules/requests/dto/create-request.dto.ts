@@ -67,6 +67,10 @@ export class CreateRequestDto {
   @IsOptional()
   @IsString()
   fundraisingUrl?: string;
+
+  @ApiPropertyOptional({ type: 'array', items: { type: 'object' } })
+  @IsOptional()
+  mediaUrls?: Array<{ url: string; name: string; type: string }>;
 }
 
 export class AddInfoRequestDto {

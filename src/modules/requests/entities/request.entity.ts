@@ -132,6 +132,10 @@ export class Request extends BaseEntity {
   @Column({ type: 'simple-array', nullable: true, default: '' })
   reportUrls: string[];
 
+  /** URL медіа-файлів заявки (фото, відео, документи), додані під час створення/редагування */
+  @Column({ name: 'media_urls', type: 'jsonb', nullable: true, default: [] })
+  mediaUrls: Array<{ url: string; name: string; type: string }>;
+
   /** Додаткова інформація, додана власником після створення (FR-09) */
   @Column({ name: 'additional_info', type: 'jsonb', nullable: true, default: [] })
   additionalInfo: Array<{ id: string; text: string; attachments: any[]; createdAt: Date; updatedAt?: Date }>;

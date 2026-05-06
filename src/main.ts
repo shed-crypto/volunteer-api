@@ -1,10 +1,12 @@
 import { NestFactory, Reflector } from '@nestjs/core';
 import { ValidationPipe, ClassSerializerInterceptor } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { NestExpressApplication } from '@nestjs/platform-express';
+import { join } from 'path';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // ─── Глобальні налаштування ────────────────────────────────────────────────
 
@@ -71,6 +73,11 @@ async function bootstrap() {
       `\n📖 Swagger UI: http://localhost:${process.env.PORT || 3000}/api/docs\n`,
     );
   }
+
+  // ─── Статичне обслуговування завантажених файлів ──────────────────────────
+  app.useStaticAssets(join(process.cwd(), 'uploads'), {
+    prefix: '/uploads',
+  });
 
   // ─── Health check endpoint (без /api префіксу) ─────────────────────────────
   app.getHttpAdapter().get('/health/ping', (req: any, res: any) => {

@@ -179,7 +179,14 @@ export class RequestsService {
       );
     }
 
-    Object.assign(request, dto);
+    // Merge mediaUrls instead of overwriting
+    if (dto.mediaUrls) {
+      const existing = request.mediaUrls || [];
+      const newUrls = ((dto as any).mediaUrls as typeof request.mediaUrls) || [];
+      request.mediaUrls = [...existing, ...newUrls];
+    }
+
+    Object.assign(request, { ...dto, mediaUrls: request.mediaUrls });
 
     if (dto.title || dto.description) {
       request.tags = this.autoCategorizeTags(
