@@ -334,6 +334,107 @@ export class RequestsService {
     return saved.map((s) => s.request);
   }
 
+  async getSavedRequestIds(userId: string): Promise<string[]> {
+    const user = await this.requestRepository.manager.getRepository(User).findOne({
+      where: { id: userId },
+      relations: ['savedRequests'],
+    });
+    return user?.savedRequests?.map((r) => r.id) || [];
+  }
+
+  async getRequestsWithPriority(params: {
+    userId?: string;
+    userLat?: number;
+    userLng?: number;
+    limit?: number;
+    offset?: number;
+    search?: string;
+    status?: string;
+    urgency?: string;
+    category?: string;
+    excludeCreatorId?: string;
+  }): Promise<any[]> {
+    const { userId, userLat, userLng, limit = 20, offset = 0, search, status, urgency, category, excludeCreatorId } = params;
+
+    const query = this.requestRepository
+      .createQueryBuilder('req')
+      .leftJoinAndSelect('req.creator', 'creator')
+      .leftJoinAndSelect('req.savedBy', 'savedBy')
+      .where('req.deleted_at IS NULL');
+
+    // Apply filters
+    if (status) {
+      query.andWhere('req.status = :status', { status });
+    }
+    if (urgency) {
+      query.andWhere('req.urgency = :urgency', { urgency });
+    }
+    if (category) {
+      query.andWhere('req.category = :category', { category });
+    }
+    if (excludeCreatorId) {
+      query.andWhere('req.creator_id != :excludeCreatorId', { excludeCreatorId });
+    }
+    if (search) {
+      query.andWhere(
+        '(req.title ILIKE :search OR req.description ILIKE :search)',
+        { search: `%${search}%` },
+      );
+    }
+
+    // Build priority CASE expression dynamically based on whether coordinates are provided
+    let priorityCase: string;
+    
+    if (userLat != null && userLng != null) {
+      // Coordinates provided - include geographic search
+      priorityCase = `
+      CASE 
+        WHEN EXISTS (
+          SELECT 1 FROM request_saved_users rsu 
+          WHERE rsu.request_id = req.id AND rsu.user_id = :userId
+        ) THEN 1
+        WHEN req.creator_id = :userId THEN 2
+        WHEN req.latitude IS NOT NULL AND req.longitude IS NOT NULL
+             AND ST_DWithin(
+               ST_MakePoint(req.longitude::double precision, req.latitude::double precision)::geography,
+               ST_MakePoint(${userLng}::double precision, ${userLat}::double precision)::geography,
+               5000
+             ) THEN 3
+        ELSE 4
+      END
+    `;
+      query.setParameter('userId', userId);
+    } else {
+      // No coordinates - simpler priority without geographic search
+      priorityCase = `
+      CASE 
+        WHEN EXISTS (
+          SELECT 1 FROM request_saved_users rsu 
+          WHERE rsu.request_id = req.id AND rsu.user_id = :userId
+        ) THEN 1
+        WHEN req.creator_id = :userId THEN 2
+        ELSE 4
+      END
+    `;
+      query.setParameter('userId', userId);
+    }
+
+    query.addSelect(priorityCase, 'priority');
+
+    query
+      .orderBy('priority', 'ASC')
+      .addOrderBy('req.createdAt', 'DESC')
+      .limit(limit)
+      .offset(offset);
+
+    const requests = await query.getMany();
+
+    return requests.map((req) => ({
+      ...req,
+      isSaved: req.savedBy?.some((u) => u.id === userId) || false,
+    }));
+  }
+
   // ─── Життєвий цикл (Request Lifecycle) ──────────────────────────────────────
 
   async markAsPendingReview(id: string, requester: User): Promise<Request> {

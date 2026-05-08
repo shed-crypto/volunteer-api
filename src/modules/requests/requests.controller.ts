@@ -51,14 +51,27 @@ export class RequestsController {
   }
 
   @Get()
-  @ApiOperation({
-    summary: 'Список заявок (з фільтрами, пошуком та георадіусом)',
-  })
+  @ApiOperation({ summary: 'Отримати список заявок з пріоритезацією та пагінацією' })
   findAll(
-    @Query() dto: FindRequestsDto,
-    @CurrentUser() user: User,
-  ): Promise<Request[]> {
-    return this.requestsService.findAll(dto, user);
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+    @Query('latitude') latitude?: number,
+    @Query('longitude') longitude?: number,
+    @CurrentUser() user?: User,
+  ): Promise<any[]> {
+    return this.requestsService.getRequestsWithPriority({
+      userId: user?.id,
+      userLat: latitude ? parseFloat(latitude as any) : undefined,
+      userLng: longitude ? parseFloat(longitude as any) : undefined,
+      limit: limit ? parseInt(limit as any) : 20,
+      offset: offset ? parseInt(offset as any) : 0,
+    });
+  }
+
+  @Get('saved-ids')
+  @ApiOperation({ summary: 'Отримати ID збережених заявок для синхронізації' })
+  async getSavedIds(@CurrentUser() user: User): Promise<string[]> {
+    return this.requestsService.getSavedRequestIds(user.id);
   }
 
   @Get('saved')
