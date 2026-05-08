@@ -148,12 +148,4 @@ export class Request extends BaseEntity {
 
   @OneToMany(() => Task, (task) => task.request, { cascade: true })
   tasks: Task[];
-
-  @ManyToMany(() => User, (user) => user.savedRequests)
-  @JoinTable({
-    name: 'request_saved_users',
-    joinColumn: { name: 'request_id', referencedColumnName: 'id' },
-    inverseJoinColumn: { name: 'user_id', referencedColumnName: 'id' },
-  })
-  savedBy: User[];
 }

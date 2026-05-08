@@ -77,7 +77,7 @@ export class RequestsService {
 
   // ─── Список заявок ────────────────────────────────────────────────────────
 
-  async findAll(dto: FindRequestsDto, requester: User): Promise<Request[]> {
+  async findAll(dto: FindRequestsDto, requester: User): Promise<(Request & { isSaved?: boolean })[]> {
     const qb = this.requestRepository
       .createQueryBuilder('request')
       .leftJoinAndSelect('request.creator', 'creator')
@@ -138,21 +138,49 @@ export class RequestsService {
     qb.limit(dto.limit || 50).offset(dto.offset || 0);
 
     const requests = await qb.getMany();
-    return requests.map((r) => this.obfuscateLocation(r, requester));
+    
+    // Get user's saved request IDs for efficient isSaved check
+    const savedRequestIds = new Set(
+      (await this.savedRequestRepository.find({
+        where: { userId: requester.id },
+        select: ['requestId'],
+      })).map(s => s.requestId)
+    );
+    
+    return requests.map((r) => {
+      const obfuscated = this.obfuscateLocation(r, requester);
+      return { ...obfuscated, isSaved: savedRequestIds.has(r.id) };
+    });
   }
 
   // ─── Деталі заявки ────────────────────────────────────────────────────────
 
-  async findOne(id: string, requester: User): Promise<Request> {
-    const request = await this.requestRepository.findOne({
-      where: { id },
-      relations: ['creator', 'tasks', 'tasks.assignments', 'tasks.assignments.user'],
-    });
+  async findOne(id: string, requester: User): Promise<Request & { isSaved?: boolean }> {
+    const request = await this.requestRepository
+      .createQueryBuilder('request')
+      .leftJoinAndSelect('request.creator', 'creator')
+      .leftJoinAndSelect('request.tasks', 'tasks')
+      .leftJoinAndSelect('tasks.assignments', 'assignments')
+      .leftJoinAndSelect('assignments.user', 'assignmentUser')
+      .where('request.id = :id', { id })
+      .getOne();
 
     if (!request) throw new NotFoundException(`Заявку ${id} не знайдено`);
 
     this.checkClearanceAccess(request, requester);
-    return this.obfuscateLocation(request, requester);
+    
+    const obfuscated = this.obfuscateLocation(request, requester);
+    
+    // Check isSaved from savedRequestRepository
+    const isSaved = await this.savedRequestRepository.exists({
+      where: { requestId: id, userId: requester.id }
+    });
+    console.log('[DEBUG] findOne request:', request.id, 'isSaved:', isSaved);
+    
+    return {
+      ...obfuscated,
+      isSaved,
+    };
   }
 
   // ─── Оновлення ────────────────────────────────────────────────────────────
@@ -331,15 +359,19 @@ export class RequestsService {
       skip: offset,
       order: { savedAt: 'DESC' },
     });
-    return saved.map((s) => s.request);
+    // Add isSaved flag to each request
+    return saved.map((s) => ({
+      ...s.request,
+      isSaved: true,
+    }));
   }
 
   async getSavedRequestIds(userId: string): Promise<string[]> {
-    const user = await this.requestRepository.manager.getRepository(User).findOne({
-      where: { id: userId },
-      relations: ['savedRequests'],
+    const savedRequests = await this.savedRequestRepository.find({
+      where: { userId },
+      select: ['requestId'],
     });
-    return user?.savedRequests?.map((r) => r.id) || [];
+    return savedRequests.map((r) => r.requestId);
   }
 
   async getRequestsWithPriority(params: {
@@ -359,7 +391,6 @@ export class RequestsService {
     const query = this.requestRepository
       .createQueryBuilder('req')
       .leftJoinAndSelect('req.creator', 'creator')
-      .leftJoinAndSelect('req.savedBy', 'savedBy')
       .where('req.deleted_at IS NULL');
 
     // Apply filters
@@ -389,18 +420,14 @@ export class RequestsService {
       // Coordinates provided - include geographic search
       priorityCase = `
       CASE 
-        WHEN EXISTS (
-          SELECT 1 FROM request_saved_users rsu 
-          WHERE rsu.request_id = req.id AND rsu.user_id = :userId
-        ) THEN 1
-        WHEN req.creator_id = :userId THEN 2
+        WHEN req.creator_id = :userId THEN 1
         WHEN req.latitude IS NOT NULL AND req.longitude IS NOT NULL
              AND ST_DWithin(
                ST_MakePoint(req.longitude::double precision, req.latitude::double precision)::geography,
                ST_MakePoint(${userLng}::double precision, ${userLat}::double precision)::geography,
                5000
-             ) THEN 3
-        ELSE 4
+             ) THEN 2
+        ELSE 3
       END
     `;
       query.setParameter('userId', userId);
@@ -408,12 +435,8 @@ export class RequestsService {
       // No coordinates - simpler priority without geographic search
       priorityCase = `
       CASE 
-        WHEN EXISTS (
-          SELECT 1 FROM request_saved_users rsu 
-          WHERE rsu.request_id = req.id AND rsu.user_id = :userId
-        ) THEN 1
-        WHEN req.creator_id = :userId THEN 2
-        ELSE 4
+        WHEN req.creator_id = :userId THEN 1
+        ELSE 3
       END
     `;
       query.setParameter('userId', userId);
@@ -429,10 +452,22 @@ export class RequestsService {
 
     const requests = await query.getMany();
 
-    return requests.map((req) => ({
+    // Get saved request IDs for isSaved check
+    let savedRequestIds: Set<string> = new Set();
+    if (userId) {
+      const saved = await this.savedRequestRepository.find({
+        where: { userId },
+        select: ['requestId'],
+      });
+      savedRequestIds = new Set(saved.map(s => s.requestId));
+    }
+
+    const result = requests.map((req) => ({
       ...req,
-      isSaved: req.savedBy?.some((u) => u.id === userId) || false,
+      isSaved: savedRequestIds.has(req.id),
     }));
+    console.log('[DEBUG] getRequestsWithPriority result sample:', JSON.stringify(result[0]?.id), 'isSaved:', result[0]?.isSaved);
+    return result;
   }
 
   // ─── Життєвий цикл (Request Lifecycle) ──────────────────────────────────────

@@ -2,7 +2,6 @@ import {
   Entity,
   Column,
   OneToMany,
-  ManyToMany,
   Index,
   BeforeInsert,
   BeforeUpdate,
@@ -15,7 +14,6 @@ import { Vehicle } from '@modules/users/entities/vehicle.entity';
 import { TrustVouch } from '@modules/users/entities/trust-vouch.entity';
 import { OrganizationMember } from '@modules/organizations/entities/organization-member.entity';
 import { TaskAssignment } from '@modules/tasks/entities/task-assignment.entity';
-import { Request } from '@modules/requests/entities/request.entity';
 
 @Entity('users')
 @Index(['email'], { unique: true })
@@ -138,8 +136,6 @@ export class User extends BaseEntity {
   @OneToMany(() => TaskAssignment, (assignment) => assignment.user)
   taskAssignments: TaskAssignment[];
 
-  @ManyToMany(() => Request, (request) => request.savedBy)
-  savedRequests: Request[];
 
   // ─── Методи ─────────────────────────────────────────────────────────────────
 
