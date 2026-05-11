@@ -157,6 +157,14 @@ export class TasksService {
 
       task.request     = request;
 
+      // Крок 1.5: заборона REQUESTER брати задачі
+      if (volunteer.systemRole === SystemRole.REQUESTER) {
+        throw new ForbiddenException(
+          'Заявники (Requester) не можуть брати задачі в роботу. ' +
+          'Будь ласка, зверніться до адміністратора для підвищення ролі до Волонтера.',
+        );
+      }
+
       // Крок 2: перевірка допуску
       this.checkClearanceAccess(request.requiredClearance, volunteer);
 
