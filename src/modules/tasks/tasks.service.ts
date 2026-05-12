@@ -52,11 +52,23 @@ export class TasksService {
   ) {}
 
   async findByRequest(requestId: string, user: User): Promise<Task[]> {
-    return this.taskRepository.find({
+    const tasks = await this.taskRepository.find({
       where: { requestId },
       relations: ['assignments', 'assignments.user'],
       order: { priority: 'DESC', createdAt: 'ASC' },
     });
+    // Ensure assignedCount is a real property (serializable) not just a getter
+    tasks.forEach((t: any) => {
+      try {
+        const asgns = t.assignments || [];
+        t.assignedCount = asgns.filter(
+          (a: any) => a && a.status !== 'withdrawn' && a.status !== 'completed',
+        ).length;
+      } catch {
+        t.assignedCount = 0;
+      }
+    });
+    return tasks;
   }
 
   async findById(id: string): Promise<Task> {
