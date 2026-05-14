@@ -57,15 +57,26 @@ export class TasksService {
       relations: ['assignments', 'assignments.user'],
       order: { priority: 'DESC', createdAt: 'ASC' },
     });
-    // Ensure assignedCount is a real property (serializable) not just a getter
+    // Ensure assignedCount is a real property (serializable) not just a getter.
+    // The Task entity has a getter for assignedCount, so we must use defineProperty
+    // to override it with a concrete value before JSON serialization.
     tasks.forEach((t: any) => {
       try {
         const asgns = t.assignments || [];
-        t.assignedCount = asgns.filter(
+        const count = asgns.filter(
           (a: any) => a && a.status !== 'withdrawn' && a.status !== 'completed',
         ).length;
+        Object.defineProperty(t, 'assignedCount', {
+          value: count,
+          enumerable: true,
+          configurable: true,
+        });
       } catch {
-        t.assignedCount = 0;
+        Object.defineProperty(t, 'assignedCount', {
+          value: 0,
+          enumerable: true,
+          configurable: true,
+        });
       }
     });
     return tasks;
