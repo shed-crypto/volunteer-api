@@ -37,6 +37,12 @@ export class CreateRequestDto {
   @IsEnum(ClearanceLevel)
   requiredClearance?: ClearanceLevel;
 
+  @ApiPropertyOptional({ example: 'Хрещатик, 1, Київ, Україна' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  address?: string;
+
   @ApiPropertyOptional({ example: 48.4647 })
   @IsOptional()
   @IsNumber()

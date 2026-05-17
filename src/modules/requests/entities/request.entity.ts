@@ -95,6 +95,10 @@ export class Request extends BaseEntity {
   })
   exactLocation: string;
 
+  /** Адреса (текстовий опис місця) */
+  @Column({ name: 'address', type: 'varchar', length: 500, nullable: true })
+  address: string;
+
   /** Широта (для зручного доступу без PostGIS ST_X/ST_Y) */
   @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
   latitude: number;
