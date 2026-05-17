@@ -135,8 +135,9 @@ export class ChatService {
       content: dto.content,
       attachmentUrl: dto.attachmentUrl || null,
       messageType: messageType,
-      messageStatus: 'sent', // Завжди sent по замовчуванню
-      replyToId: dto.replyToId || null,
+      messageStatus: 'sent',
+      // Захист: якщо replyToId починається з "temp-", це локальний ID, ігноруємо
+      replyToId: (dto.replyToId && !dto.replyToId.startsWith('temp-')) ? dto.replyToId : null,
     });
 
     const saved = await this.messageRepo.save(message);
