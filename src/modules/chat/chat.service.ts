@@ -19,12 +19,16 @@ export class ChatService {
     private readonly chatGateway: ChatGateway,
   ) {}
 
-  /** Усі чати поточного користувача */
+  /** Усі чати поточного користувача (тільки ті, де є повідомлення) */
   async getUserChats(user: User): Promise<Chat[]> {
     return this.chatRepo
       .createQueryBuilder('chat')
       .innerJoin('chat.participants', 'p', 'p.id = :userId', { userId: user.id })
       .leftJoinAndSelect('chat.participants', 'participants')
+      .loadRelationCountAndMap('chat.messageCount', 'chat.messages')
+      // Показуємо тільки чати, де є хоча б одне повідомлення
+      .innerJoin('chat.messages', 'msg', 'msg.deleted_at IS NULL')
+      .distinct(true)
       .orderBy('chat.updated_at', 'DESC')
       .getMany();
   }
