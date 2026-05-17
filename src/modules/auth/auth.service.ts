@@ -146,32 +146,66 @@ export class AuthService {
     return { message: 'Лист верифікації надіслано повторно' };
   }
 
-  // ─── Скидання пароля ────────────────────────────────────────────────────────
+  // ─── Скидання пароля (6-значний код) ────────────────────────────────────────
 
-  async requestPasswordReset(email: string): Promise<{ message: string }> {
+  async requestPasswordReset(email: string): Promise<{ message: string; exists: boolean }> {
     const user = await this.userRepository.findOne({
       where: { email: email.toLowerCase() },
     });
 
     if (!user) {
-      // Для безпеки не говоримо, що користувача не знайдено (prevent user enumeration)
-      return { message: 'Якщо цей email існує, лист для скидання пароля надіслано' };
+      return { message: 'Користувача з таким email не знайдено', exists: false };
     }
 
-    const resetToken = uuidv4();
+    // Генеруємо 6-значний код
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
     const resetExpires = new Date();
-    resetExpires.setHours(resetExpires.getHours() + 1); // Токен діє 1 годину
+    resetExpires.setMinutes(resetExpires.getMinutes() + 10); // Код діє 10 хвилин
 
     await this.userRepository.update(user.id, {
-      passwordResetToken: resetToken,
+      passwordResetCode: code,
       passwordResetExpires: resetExpires,
     });
 
     setImmediate(() => {
-      this.emailService.sendPasswordResetEmail(user.email, resetToken).catch(() => {});
+      this.emailService.sendPasswordResetCode(user.email, code).catch(() => {});
     });
 
-    return { message: 'Якщо цей email існує, лист для скидання пароля надіслано' };
+    return { message: 'Код для скидання пароля надіслано на ваш email', exists: true };
+  }
+
+  async verifyResetCode(email: string, code: string): Promise<{ token: string; message: string }> {
+    const user = await this.userRepository.findOne({
+      where: { email: email.toLowerCase() },
+    });
+
+    if (!user || !user.passwordResetCode || !user.passwordResetExpires) {
+      throw new BadRequestException('Скидання пароля не запитувалось');
+    }
+
+    if (user.passwordResetExpires < new Date()) {
+      throw new BadRequestException('Код протермінований. Запитайте новий код.');
+    }
+
+    if (user.passwordResetCode !== code) {
+      throw new BadRequestException('Невірний код підтвердження');
+    }
+
+    // Код вірний — генеруємо одноразовий токен для скидання пароля
+    const resetToken = uuidv4();
+    const tokenExpires = new Date();
+    tokenExpires.setMinutes(tokenExpires.getMinutes() + 5); // Токен діє 5 хвилин
+
+    await this.userRepository.update(user.id, {
+      passwordResetToken: resetToken,
+      passwordResetExpires: tokenExpires,
+      passwordResetCode: null, // Видаляємо код, він більше не потрібен
+    });
+
+    return {
+      token: resetToken,
+      message: 'Код підтверджено. Тепер ви можете встановити новий пароль.',
+    };
   }
 
   async resetPassword(token: string, newPassword: string): Promise<{ message: string }> {

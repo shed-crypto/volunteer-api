@@ -25,6 +25,7 @@ import {
   VerifyEmailDto,
   AuthResponseDto,
   ForgotPasswordDto,
+  VerifyResetCodeDto,
   ResetPasswordDto,
   ChangePasswordDto,
 } from './dto/auth.dto';
@@ -126,10 +127,18 @@ export class AuthController {
   // ─── Скидання пароля ────────────────────────────────────────────────────────
 
   @Post('forgot-password')
-  @ApiOperation({ summary: 'Запит на скидання пароля' })
-  @ApiResponse({ status: 200, description: 'Лист надіслано (якщо email існує)' })
-  forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ message: string }> {
+  @ApiOperation({ summary: 'Запит на скидання пароля (надсилає 6-значний код)' })
+  @ApiResponse({ status: 200, description: 'Код надіслано на email або email не знайдено' })
+  forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ message: string; exists: boolean }> {
     return this.authService.requestPasswordReset(dto.email);
+  }
+
+  @Post('verify-reset-code')
+  @ApiOperation({ summary: 'Підтвердити 6-значний код з листа' })
+  @ApiResponse({ status: 200, description: 'Код підтверджено, повертає токен для скидання' })
+  @ApiResponse({ status: 400, description: 'Невірний або протермінований код' })
+  verifyResetCode(@Body() dto: VerifyResetCodeDto): Promise<{ token: string; message: string }> {
+    return this.authService.verifyResetCode(dto.email, dto.code);
   }
 
   @Post('reset-password')

@@ -74,13 +74,41 @@ export class EmailService implements OnModuleInit {
     await this.sendMail({ to: email, subject, html });
   }
 
-  // ─── Скидання пароля ─────────────────────────────────────────────────────
+  // ─── Скидання пароля (6-значний код) ─────────────────────────────────────
 
+  async sendPasswordResetCode(email: string, code: string): Promise<void> {
+    const subject = '🔑 Код для скидання пароля — Волонтерська допомога';
+    const html = `
+      <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px">
+        <h2 style="color:#1a56db">🇺🇦 Волонтерська допомога</h2>
+        <p>Ви запросили скидання пароля. Ваш код підтвердження:</p>
+        <div style="text-align:center;font-size:36px;font-weight:800;letter-spacing:8px;
+                    background:#f3f4f6;border-radius:12px;padding:20px;margin:20px 0;
+                    color:#1a56db">
+          ${code}
+        </div>
+        <p style="color:#666;font-size:13px">
+          Введіть цей код у додатку, щоб відновити пароль.<br>
+          Код дійсний 10 хвилин.<br><br>
+          Якщо ви не надсилали цей запит — проігноруйте лист.
+        </p>
+        <hr style="border:none;border-top:1px solid #eee;margin:20px 0">
+        <p style="color:#999;font-size:12px">
+          Якщо ви не можете ввести код, просто проігноруйте цей лист.<br>
+          Нікому не повідомляйте цей код.
+        </p>
+      </div>
+    `;
+
+    await this.sendMail({ to: email, subject, html });
+  }
+
+  // ← Колишній sendPasswordResetEmail залишається для зворотної сумісності
   async sendPasswordResetEmail(email: string, token: string): Promise<void> {
     const appUrl = this.config.get<string>('APP_URL') || 'http://localhost:3000';
     const resetUrl = `${appUrl}/api/auth/reset-password?token=${token}`;
 
-    const subject = '🔑 Скидання пароля — Волонтерська допомога';
+    const subject = '🔑 Скидання пароля (посилання) — Волонтерська допомога';
     const html = `
       <div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px">
         <h2 style="color:#1a56db">🇺🇦 Волонтерська допомога</h2>
@@ -121,7 +149,7 @@ export class EmailService implements OnModuleInit {
       });
       this.logger.debug(`Email надіслано → ${opts.to}`);
     } catch (err) {
-      this.logger.error(`Помилка надсилання email на ${opts.to}: ${err.message}`);
+      this.logger.error(`Помилка надсилання email на ${opts.to}: ${(err as Error).message}`);
       // Не кидаємо помилку вгору — email є другорядною функцією
     }
   }

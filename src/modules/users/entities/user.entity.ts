@@ -103,6 +103,15 @@ export class User extends BaseEntity {
   emailVerificationToken: string | null;
 
   @Column({
+    name: 'password_reset_code',
+    type: 'varchar',
+    length: 6,
+    nullable: true,
+  })
+  @Exclude()
+  passwordResetCode: string | null;
+
+  @Column({
     name: 'password_reset_token',
     type: 'varchar',
     length: 255,

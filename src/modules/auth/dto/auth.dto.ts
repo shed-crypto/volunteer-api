@@ -6,6 +6,7 @@ import {
   IsOptional,
   IsEnum,
   Matches,
+  Length,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SystemRole } from '@common/enums';
@@ -77,6 +78,17 @@ export class ForgotPasswordDto {
   @ApiProperty({ example: 'example@example.com' })
   @IsEmail()
   email: string;
+}
+
+export class VerifyResetCodeDto {
+  @ApiProperty({ example: 'example@example.com' })
+  @IsEmail()
+  email: string;
+
+  @ApiProperty({ example: '482916', description: '6-значний код з листа' })
+  @IsString()
+  @Length(6, 6, { message: 'Код повинен містити рівно 6 символів' })
+  code: string;
 }
 
 export class ResetPasswordDto {
