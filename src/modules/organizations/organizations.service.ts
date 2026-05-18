@@ -1,6 +1,7 @@
 import {
   Injectable, NotFoundException,
   ForbiddenException, ConflictException,
+  InternalServerErrorException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Like } from 'typeorm';
@@ -365,6 +366,42 @@ export class OrganizationsService {
     const hub = await this.hubRepo.findOne({ where: { id: hubId, organizationId: orgId } });
     if (!hub) throw new NotFoundException('Хаб не знайдено в цій організації');
     await this.hubRepo.remove(hub);
+  }
+
+  /** Створити чат для існуючої організації (якщо його ще немає) */
+  async createOrgChat(orgId: string, requester: User): Promise<Organization> {
+    await this.checkLeaderOrAdmin(orgId, requester);
+    const org = await this.findById(orgId);
+
+    if (org.chatId) {
+      throw new ConflictException('Чат для цієї організації вже існує');
+    }
+
+    const members = await this.memberRepo.find({
+      where: { organizationId: orgId, isActive: true },
+    });
+    const participantIds = members.map((m) => m.userId);
+
+    if (participantIds.length === 0) {
+      // Якщо учасників немає — додаємо хоча б ініціатора
+      participantIds.push(requester.id);
+    }
+
+    try {
+      const chat = await this.chatService.createGroupChat(
+        `Чат: ${org.name}`,
+        participantIds,
+        ChatType.ORG_CHAT,
+        org.id,
+      );
+      org.chatId = chat.id;
+      await this.orgRepo.save(org);
+    } catch (e) {
+      console.error(`[OrganizationsService] Failed to create org chat for ${orgId}:`, e);
+      throw new InternalServerErrorException('Не вдалося створити чат організації');
+    }
+
+    return this.findById(orgId);
   }
 
   private async checkLeaderOrAdmin(orgId: string, user: User): Promise<void> {

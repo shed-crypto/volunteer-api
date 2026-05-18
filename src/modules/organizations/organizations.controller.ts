@@ -328,6 +328,17 @@ export class OrganizationsController {
     return this.orgsService.handleJoinRequest(reqId, false, user, comment);
   }
 
+  @Post(':id/create-chat')
+  @UseGuards(OrganizationRoleGuard)
+  @Roles(OrgRole.LEADER, OrgRole.COORDINATOR)
+  @ApiOperation({ summary: 'Створити чат для організації (якщо ще не створено)' })
+  createChat(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ): Promise<Organization> {
+    return this.orgsService.createOrgChat(id, user);
+  }
+
   @Post(':id/upload-logo')
   @UseGuards(OrganizationRoleGuard)
   @Roles(OrgRole.LEADER)
