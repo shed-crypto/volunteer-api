@@ -88,4 +88,8 @@ export class AddInfoRequestDto {
   @ApiPropertyOptional({ type: 'array', items: { type: 'object' } })
   @IsOptional()
   attachments?: any[];
+
+  @ApiPropertyOptional({ description: 'URL файлів, які потрібно видалити з існуючих вкладень' })
+  @IsOptional()
+  removedAttachments?: string[];
 }

@@ -286,10 +286,14 @@ export class RequestsService {
       }
     }
 
+    // Filter out removed attachments if any
+    const keptAttachments = dto.removedAttachments?.length
+      ? (info.attachments || []).filter((a: any) => !dto.removedAttachments!.includes(a.url))
+      : info.attachments || [];
     request.additionalInfo[infoIndex] = {
       ...info,
       text: dto.text,
-      attachments: dto.attachments || info.attachments || [],
+      attachments: dto.attachments?.length ? [...keptAttachments, ...dto.attachments] : keptAttachments,
       updatedAt: new Date(),
     };
 
