@@ -539,16 +539,34 @@ export class RequestsService {
       this.getClearanceRank(user.clearanceLevel) >=
         this.getClearanceRank(request.requiredClearance);
 
-    if (!hasAccess && request.latitude != null && request.longitude != null) {
-      const seed = parseInt(request.id.replace(/-/g, '').substring(0, 8), 16);
-      const angle = (seed % 360) * (Math.PI / 180);
-      const distanceDeg = OBFUSCATION_RADIUS_M / 111320;
-      request.latitude = parseFloat(
-        (request.latitude + distanceDeg * Math.sin(angle)).toFixed(6),
-      );
-      request.longitude = parseFloat(
-        (request.longitude + distanceDeg * Math.cos(angle)).toFixed(6),
-      );
+    if (!hasAccess) {
+      // Обфускація координат
+      if (request.latitude != null && request.longitude != null) {
+        const seed = parseInt(request.id.replace(/-/g, '').substring(0, 8), 16);
+        const angle = (seed % 360) * (Math.PI / 180);
+        const distanceDeg = OBFUSCATION_RADIUS_M / 111320;
+        request.latitude = parseFloat(
+          (request.latitude + distanceDeg * Math.sin(angle)).toFixed(6),
+        );
+        request.longitude = parseFloat(
+          (request.longitude + distanceDeg * Math.cos(angle)).toFixed(6),
+        );
+      }
+
+      // Приховування медіа
+      if (request.mediaUrls && Array.isArray(request.mediaUrls)) {
+        request.mediaUrls = request.mediaUrls.map((m: any) => ({
+          ...m,
+          url: null,
+          blurred: true,
+          name: '[Приховано через конфіденційність локації]',
+        }));
+      }
+
+      // Приховування точної адреси
+      if (request.address) {
+        request.address = '[Точна адреса прихована]';
+      }
     }
 
     return request;
