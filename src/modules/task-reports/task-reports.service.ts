@@ -60,6 +60,12 @@ export class TaskReportsService {
       throw new Error('Редагування звіту можливе лише протягом 30 хвилин');
     }
     report.comment = comment;
+    // Якщо звіт був підтверджений — скидаємо підтвердження (зміст змінився)
+    if (report.isVerified) {
+      report.isVerified = false;
+      report.verifiedById = null;
+      report.verifiedAt = null;
+    }
     return this.reportRepository.save(report);
   }
 
@@ -75,6 +81,10 @@ export class TaskReportsService {
     const report = await this.findById(id);
     if (report.userId !== userId) {
       throw new Error('Ви не можете видалити чужий звіт');
+    }
+    // Не можна видалити підтверджений звіт
+    if (report.isVerified) {
+      throw new Error('Не можна видалити підтверджений звіт');
     }
     // Перевірка часу: 30 хвилин
     const diff = (Date.now() - new Date(report.createdAt).getTime()) / 60000;
