@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { Request } from './entities/request.entity';
 import { SavedRequest } from './entities/saved-request.entity';
+import { AccessLog, AccessAction } from './entities/access-log.entity';
 import { User } from '@modules/users/entities/user.entity';
 import {
   RequestStatus,
@@ -41,14 +42,11 @@ export class RequestsService {
     private readonly requestRepository: Repository<Request>,
     @InjectRepository(SavedRequest)
     private readonly savedRequestRepository: Repository<SavedRequest>,
+    @InjectRepository(AccessLog)
+    private readonly accessLogRepository: Repository<AccessLog>,
   ) {}
 
   // ─── Створення заявки ─────────────────────────────────────────────────────
-  //
-  // БАГ-ФІКс: exactLocation (PostGIS geometry) ніколи не встановлювалось.
-  // TypeORM не вміє автоматично конвертувати latitude/longitude у PostGIS Point.
-  // Рішення: зберігаємо заявку, потім окремим raw-запитом встановлюємо exactLocation.
-  // Це потрібно щоб ST_DWithin геопошук на карті працював коректно.
 
   async create(dto: CreateRequestDto, creator: User): Promise<Request> {
     const tags = this.autoCategorizeTags(dto.title + ' ' + (dto.description || ''));
@@ -61,8 +59,6 @@ export class RequestsService {
 
     const saved = await this.requestRepository.save(request);
 
-    // БАГ-ФІКс: встановити PostGIS поле exactLocation через raw SQL
-    // TypeORM не підтримує geometry insert безпосередньо через create()
     if (dto.latitude != null && dto.longitude != null) {
       await this.requestRepository.query(
         `UPDATE requests
@@ -99,7 +95,6 @@ export class RequestsService {
       );
     }
 
-    // FR-08: фільтр за clearance
     const userClearanceRank = this.getClearanceRank(requester.clearanceLevel);
     if (requester.systemRole !== SystemRole.ADMIN) {
       qb.andWhere(
@@ -112,7 +107,6 @@ export class RequestsService {
       );
     }
 
-    // Геопошук — тільки якщо exact_location встановлено (не null)
     if (dto.latitude != null && dto.longitude != null && dto.radiusKm) {
       const radiusM = dto.radiusKm * 1000;
       qb.andWhere(
@@ -138,15 +132,14 @@ export class RequestsService {
     qb.limit(dto.limit || 50).offset(dto.offset || 0);
 
     const requests = await qb.getMany();
-    
-    // Get user's saved request IDs for efficient isSaved check
+
     const savedRequestIds = new Set(
       (await this.savedRequestRepository.find({
         where: { userId: requester.id },
         select: ['requestId'],
       })).map(s => s.requestId)
     );
-    
+
     return requests.map((r) => {
       const obfuscated = this.obfuscateLocation(r, requester);
       return { ...obfuscated, isSaved: savedRequestIds.has(r.id) };
@@ -168,15 +161,16 @@ export class RequestsService {
     if (!request) throw new NotFoundException(`Заявку ${id} не знайдено`);
 
     this.checkClearanceAccess(request, requester);
-    
+
     const obfuscated = this.obfuscateLocation(request, requester);
-    
-    // Check isSaved from savedRequestRepository
+
     const isSaved = await this.savedRequestRepository.exists({
       where: { requestId: id, userId: requester.id }
     });
-    console.log('[DEBUG] findOne request:', request.id, 'isSaved:', isSaved);
-    
+
+    // Логування доступу для FRONTLINE заявок (крім власника)
+    this.logAccess(request, requester, 'view_detail');
+
     return {
       ...obfuscated,
       isSaved,
@@ -196,18 +190,16 @@ export class RequestsService {
       throw new ForbiddenException('Немає прав для редагування цієї заявки');
     }
 
-    // FR-09: обмеження редагування — не можна редагувати якщо хтось уже взяв у роботу
     const hasActiveAssignments = request.tasks?.some((task) =>
       task.assignments?.some((a) => a.status !== AssignmentStatus.WITHDRAWN),
     );
 
     if (hasActiveAssignments && requester.systemRole !== SystemRole.ADMIN) {
       throw new ForbiddenException(
-        'Не можна редагувати заявку, яку вже взяли в роботу волонтери. Додайте інформацію через коментарі або чат.',
+        'Не можна редагувати заявку, яку вже взяли в роботу волонтери.',
       );
     }
 
-    // Merge mediaUrls instead of overwriting
     if (dto.mediaUrls) {
       const existing = request.mediaUrls || [];
       const newUrls = ((dto as any).mediaUrls as typeof request.mediaUrls) || [];
@@ -224,7 +216,6 @@ export class RequestsService {
 
     const saved = await this.requestRepository.save(request);
 
-    // Оновлення PostGIS точки якщо координати змінились
     const lat = (dto as any).latitude ?? request.latitude;
     const lng = (dto as any).longitude ?? request.longitude;
     if (lat != null && lng != null) {
@@ -274,7 +265,6 @@ export class RequestsService {
 
     const info = request.additionalInfo[infoIndex];
 
-    // Перевірка 30 хвилин для не-адмінів
     if (requester.systemRole !== SystemRole.ADMIN) {
       const now = new Date();
       const createdAt = new Date(info.createdAt);
@@ -286,7 +276,6 @@ export class RequestsService {
       }
     }
 
-    // Filter out removed attachments if any
     const keptAttachments = dto.removedAttachments?.length
       ? (info.attachments || []).filter((a: any) => !dto.removedAttachments!.includes(a.url))
       : info.attachments || [];
@@ -313,7 +302,6 @@ export class RequestsService {
 
     const info = request.additionalInfo[infoIndex];
 
-    // Перевірка 30 хвилин для не-адмінів
     if (requester.systemRole !== SystemRole.ADMIN) {
       const now = new Date();
       const createdAt = new Date(info.createdAt);
@@ -363,7 +351,6 @@ export class RequestsService {
       skip: offset,
       order: { savedAt: 'DESC' },
     });
-    // Add isSaved flag to each request
     return saved.map((s) => ({
       ...s.request,
       isSaved: true,
@@ -417,19 +404,11 @@ export class RequestsService {
       .leftJoinAndSelect('req.creator', 'creator')
       .where('req.deleted_at IS NULL');
 
-    // Apply filters
-    if (status) {
-      query.andWhere('req.status = :status', { status });
-    }
-    if (urgency) {
-      query.andWhere('req.urgency = :urgency', { urgency });
-    }
-    if (category) {
-      query.andWhere('req.category = :category', { category });
-    }
-    if (excludeCreatorId) {
-      query.andWhere('req.creator_id != :excludeCreatorId', { excludeCreatorId });
-    }
+    if (status)       query.andWhere('req.status = :status', { status });
+    if (urgency)      query.andWhere('req.urgency = :urgency', { urgency });
+    if (category)     query.andWhere('req.category = :category', { category });
+    if (excludeCreatorId) query.andWhere('req.creatorId != :excludeCreatorId', { excludeCreatorId });
+
     if (search) {
       query.andWhere(
         '(req.title ILIKE :search OR req.description ILIKE :search)',
@@ -437,169 +416,146 @@ export class RequestsService {
       );
     }
 
-    // Build priority CASE expression dynamically based on whether coordinates are provided
-    let priorityCase: string;
-    
     if (userLat != null && userLng != null) {
-      // Coordinates provided - include geographic search
-      priorityCase = `
-      CASE 
-        WHEN req.creator_id = :userId THEN 1
-        WHEN req.latitude IS NOT NULL AND req.longitude IS NOT NULL
-             AND ST_DWithin(
-               ST_MakePoint(req.longitude::double precision, req.latitude::double precision)::geography,
-               ST_MakePoint(${userLng}::double precision, ${userLat}::double precision)::geography,
-               5000
-             ) THEN 2
-        ELSE 3
-      END
-    `;
-      query.setParameter('userId', userId);
+      query.addSelect(
+        `ST_Distance(
+          req.exact_location::geography,
+          ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography
+        )`,
+        'distance',
+      );
+      query.setParameter('lat', userLat);
+      query.setParameter('lng', userLng);
+      query.orderBy('distance', 'ASC');
     } else {
-      // No coordinates - simpler priority without geographic search
-      priorityCase = `
-      CASE 
-        WHEN req.creator_id = :userId THEN 1
-        ELSE 3
-      END
-    `;
-      query.setParameter('userId', userId);
+      query.orderBy('req.created_at', 'DESC');
     }
 
-    query.addSelect(priorityCase, 'priority');
+    query.skip(offset).take(limit);
 
-    query
-      .orderBy('priority', 'ASC')
-      .addOrderBy('req.createdAt', 'DESC')
-      .limit(limit)
-      .offset(offset);
-
-    const requests = await query.getMany();
-
-    // Get saved request IDs for isSaved check
-    let savedRequestIds: Set<string> = new Set();
-    if (userId) {
-      const saved = await this.savedRequestRepository.find({
-        where: { userId },
-        select: ['requestId'],
-      });
-      savedRequestIds = new Set(saved.map(s => s.requestId));
-    }
-
-    const result = requests.map((req) => ({
-      ...req,
-      isSaved: savedRequestIds.has(req.id),
-    }));
-    console.log('[DEBUG] getRequestsWithPriority result sample:', JSON.stringify(result[0]?.id), 'isSaved:', result[0]?.isSaved);
-    return result;
+    return query.getMany();
   }
 
-  // ─── Життєвий цикл (Request Lifecycle) ──────────────────────────────────────
+  // ─── Статусні операції ─────────────────────────────────────────────────
 
-  async markAsPendingReview(id: string, requester: User): Promise<Request> {
+  async markAsPendingReview(id: string, user: User): Promise<Request> {
     const request = await this.requestRepository.findOne({ where: { id } });
     if (!request) throw new NotFoundException(`Заявку ${id} не знайдено`);
 
-    // Будь-який волонтер, що працює над заявкою (чи власник), може відправити на перевірку
+    if (request.creatorId !== user.id && user.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException('Тільки власник або адмін може змінити статус');
+    }
+
     request.status = RequestStatus.PENDING_REVIEW;
-    return await this.requestRepository.save(request);
+    return this.requestRepository.save(request);
   }
 
-  async confirmCompletion(id: string, requester: User): Promise<Request> {
+  async confirmCompletion(id: string, user: User): Promise<Request> {
     const request = await this.requestRepository.findOne({ where: { id } });
     if (!request) throw new NotFoundException(`Заявку ${id} не знайдено`);
 
-    if (request.creatorId !== requester.id && requester.systemRole !== SystemRole.ADMIN) {
-      throw new ForbiddenException('Тільки власник або адміністратор може підтвердити виконання');
+    if (request.creatorId !== user.id && user.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException('Тільки власник або адмін може підтвердити виконання');
     }
 
     request.status = RequestStatus.COMPLETED;
-    return await this.requestRepository.save(request);
+    return this.requestRepository.save(request);
   }
 
-  async returnToProgress(id: string, requester: User): Promise<Request> {
-    if (requester.systemRole !== SystemRole.ADMIN) {
-      throw new ForbiddenException('Тільки адміністратор може скасувати перевірку');
-    }
-
+  async returnToProgress(id: string, user: User): Promise<Request> {
     const request = await this.requestRepository.findOne({ where: { id } });
     if (!request) throw new NotFoundException(`Заявку ${id} не знайдено`);
 
+    if (request.creatorId !== user.id && user.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException('Тільки власник або адмін може повернути в роботу');
+    }
+
     request.status = RequestStatus.IN_PROGRESS;
-    return await this.requestRepository.save(request);
+    return this.requestRepository.save(request);
   }
 
-  // ─── Приватні методи ──────────────────────────────────────────────────────
+  // ─── Приватні методи ────────────────────────────────────────────────────
 
-  private obfuscateLocation(request: Request, user: User): Request {
-    if (!request.isLocationHidden) return request;
+  private autoCategorizeTags(text: string): string[] {
+    const lower = text.toLowerCase();
+    const tags: string[] = [];
 
-    const hasAccess =
-      user.systemRole === SystemRole.ADMIN ||
-      this.getClearanceRank(user.clearanceLevel) >=
-        this.getClearanceRank(request.requiredClearance);
-
-    if (!hasAccess) {
-      // Обфускація координат
-      if (request.latitude != null && request.longitude != null) {
-        const seed = parseInt(request.id.replace(/-/g, '').substring(0, 8), 16);
-        const angle = (seed % 360) * (Math.PI / 180);
-        const distanceDeg = OBFUSCATION_RADIUS_M / 111320;
-        request.latitude = parseFloat(
-          (request.latitude + distanceDeg * Math.sin(angle)).toFixed(6),
-        );
-        request.longitude = parseFloat(
-          (request.longitude + distanceDeg * Math.cos(angle)).toFixed(6),
-        );
-      }
-
-      // Приховування медіа
-      if (request.mediaUrls && Array.isArray(request.mediaUrls)) {
-        request.mediaUrls = request.mediaUrls.map((m: any) => ({
-          ...m,
-          url: null,
-          blurred: true,
-          name: '[Приховано через конфіденційність локації]',
-        }));
-      }
-
-      // Приховування точної адреси
-      if (request.address) {
-        request.address = '[Точна адреса прихована]';
+    for (const [tag, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+      if (keywords.some((kw) => lower.includes(kw))) {
+        tags.push(tag);
       }
     }
 
-    return request;
-  }
-
-  private checkClearanceAccess(request: Request, user: User): void {
-    if (user.systemRole === SystemRole.ADMIN) return;
-
-    const userRank = this.getClearanceRank(user.clearanceLevel);
-    const requiredRank = this.getClearanceRank(request.requiredClearance);
-
-    if (userRank < requiredRank) {
-      throw new ForbiddenException(
-        `Недостатній рівень допуску. Потрібний: ${request.requiredClearance}`,
-      );
-    }
+    return tags;
   }
 
   private getClearanceRank(level: ClearanceLevel): number {
-    const ranks: Record<ClearanceLevel, number> = {
-      [ClearanceLevel.LOCAL]: 0,
-      [ClearanceLevel.INTERNATIONAL]: 1,
-      [ClearanceLevel.FRONTLINE]: 2,
-    };
-    return ranks[level] ?? 0;
+    switch (level) {
+      case ClearanceLevel.LOCAL:        return 0;
+      case ClearanceLevel.INTERNATIONAL: return 1;
+      case ClearanceLevel.FRONTLINE:    return 2;
+      default:                          return 0;
+    }
   }
 
-  private autoCategorizeTags(text: string): string[] {
-    const lowerText = text.toLowerCase();
-    const tags: string[] = [];
-    for (const [tag, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
-      if (keywords.some((kw) => lowerText.includes(kw))) tags.push(tag);
+  private obfuscateLocation(request: Request, viewer: User): Request {
+    if (viewer.clearanceLevel === ClearanceLevel.FRONTLINE || viewer.systemRole === SystemRole.ADMIN) {
+      return request; // без обфускації
     }
-    return tags;
+
+    if (!request.latitude || !request.longitude) return request;
+
+    // Додаємо випадкове зміщення в межах OBFUSCATION_RADIUS_M
+    const angle = Math.random() * 2 * Math.PI;
+    const offsetMeters = Math.random() * OBFUSCATION_RADIUS_M;
+    const earthRadius = 6371000;
+
+    const latOffset = (offsetMeters / earthRadius) * (180 / Math.PI);
+    const lngOffset =
+      (offsetMeters / earthRadius) * (180 / Math.PI) / Math.cos((request.latitude * Math.PI) / 180);
+
+    return {
+      ...request,
+      latitude: request.latitude + Math.cos(angle) * latOffset,
+      longitude: request.longitude + Math.sin(angle) * lngOffset,
+    };
+  }
+
+  private checkClearanceAccess(request: Request, user: User): void {
+    const clearanceRank = this.getClearanceRank(user.clearanceLevel);
+    const requiredRank = this.getClearanceRank(
+      (request as any).requiredClearance || ClearanceLevel.LOCAL,
+    );
+
+    if (
+      user.systemRole !== SystemRole.ADMIN &&
+      user.systemRole !== SystemRole.COORDINATOR &&
+      clearanceRank < requiredRank
+    ) {
+      throw new ForbiddenException('Недостатній рівень допуску для перегляду цієї заявки');
+    }
+  }
+
+  private async logAccess(
+    request: Request,
+    user: User,
+    action: AccessAction,
+  ): Promise<void> {
+    // Логуємо тільки FRONTLINE заявки, і тільки коли користувач не є власником
+    const requiredClearance = (request as any).requiredClearance;
+    if (requiredClearance !== ClearanceLevel.FRONTLINE) return;
+    if (request.creatorId === user.id) return;
+
+    try {
+      await this.accessLogRepository.save({
+        userId: user.id,
+        requestId: request.id,
+        action,
+        clearanceAtAccess: user.clearanceLevel,
+      });
+    } catch (err) {
+      // Логування не повинно блокувати основний запит
+      console.error('[AccessLog] Failed to log access:', err);
+    }
   }
 }

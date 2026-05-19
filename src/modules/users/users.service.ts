@@ -198,6 +198,9 @@ export class UsersService {
     if (!voucher.avatarUrl) {
       throw new ForbiddenException('Поручитель повинен мати завантажену аватарку (фото обличчя)');
     }
+    if (!voucher.isIdentityVerified) {
+      throw new ForbiddenException('Поручитель повинен пройти верифікацію особи адміністратором');
+    }
 
     // Перевірка що поручитель НЕ в бані
     if (voucher.isBlocked) {

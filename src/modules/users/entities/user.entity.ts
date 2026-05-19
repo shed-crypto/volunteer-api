@@ -89,6 +89,10 @@ export class User extends BaseEntity {
   @Column({ name: 'is_email_verified', type: 'boolean', default: false })
   isEmailVerified: boolean;
 
+  // Адміністративна позначка: верифікація особи (фото документу + перевірка адміном)
+  @Column({ name: 'is_identity_verified', type: 'boolean', default: false })
+  isIdentityVerified: boolean;
+
   /**
    * Тимчасовий токен для підтвердження пошти (UUID v4).
    * Обнуляється після успішної верифікації.
