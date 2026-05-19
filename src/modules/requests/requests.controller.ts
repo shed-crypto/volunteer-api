@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { CurrentUser } from '@common/decorators/current-user.decorator';
 import { User } from '@modules/users/entities/user.entity';
 import { Request } from './entities/request.entity';
+import { SystemRole } from '@common/enums';
 
 @ApiTags('Заявки (Requests / Epics)')
 @ApiBearerAuth()
@@ -59,6 +60,14 @@ export class RequestsController {
     @Query('longitude') longitude?: number,
     @CurrentUser() user?: User,
   ): Promise<any[]> {
+    // REQUESTER бачить тільки свої заявки
+    if (user?.systemRole === SystemRole.REQUESTER) {
+      return this.requestsService.getMyRequests(user.id, {
+        limit: limit ? parseInt(limit as any) : 20,
+        offset: offset ? parseInt(offset as any) : 0,
+      });
+    }
+
     return this.requestsService.getRequestsWithPriority({
       userId: user?.id,
       userLat: latitude ? parseFloat(latitude as any) : undefined,

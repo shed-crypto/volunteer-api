@@ -378,6 +378,26 @@ export class RequestsService {
     return savedRequests.map((r) => r.requestId);
   }
 
+  async getMyRequests(
+    creatorId: string,
+    options: { limit: number; offset: number },
+  ): Promise<any[]> {
+    const [requests, total] = await this.requestRepository.findAndCount({
+      where: { creatorId },
+      order: { createdAt: 'DESC' },
+      skip: options.offset,
+      take: options.limit,
+      relations: ['subTasks'],
+    });
+
+    return requests.map((r) => {
+      return {
+        ...r,
+        _meta: { total },
+      };
+    });
+  }
+
   async getRequestsWithPriority(params: {
     userId?: string;
     userLat?: number;
