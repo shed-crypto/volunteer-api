@@ -1,6 +1,7 @@
 import {
-  Controller, Get, Post, Patch, Param,
+  Controller, Get, Post, Patch, Delete, Param,
   Body, UseGuards, ParseUUIDPipe, Query, BadRequestException,
+  HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { UsersService } from './users.service';
@@ -157,6 +158,31 @@ export class UsersController {
     @Param('id', ParseUUIDPipe) userId: string,
   ): Promise<TrustVouch[]> {
     return this.usersService.getVouchesForUser(userId);
+  }
+
+  // ─── Відновлення / Відкликання поручительств (Admin) ─────────────────────
+
+  @Post('trust-vouches/:id/restore')
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.ADMIN)
+  @ApiOperation({ summary: 'Відновити призупинене поручительство (Admin)' })
+  async restoreVouch(
+    @Param('id') vouchId: string,
+    @CurrentUser() admin: User,
+  ): Promise<TrustVouch> {
+    return this.usersService.restoreVouch(vouchId, admin);
+  }
+
+  @Delete('trust-vouches/:id/revoke')
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.ADMIN)
+  @ApiOperation({ summary: 'Відкликати поручительство назавжди (Admin, hard delete)' })
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async revokeVouch(
+    @Param('id') vouchId: string,
+    @CurrentUser() admin: User,
+  ): Promise<void> {
+    return this.usersService.revokeVouchPermanently(vouchId, admin);
   }
 
   // ─── Транспорт ────────────────────────────────────────────────────────────

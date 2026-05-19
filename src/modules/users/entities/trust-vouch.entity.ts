@@ -42,4 +42,16 @@ export class TrustVouch extends BaseEntity {
   /** Коментар-обґрунтування (необов'язковий) */
   @Column({ type: 'text', nullable: true })
   comment: string;
+
+  /** Чи призупинено поручительство */
+  @Column({ type: 'boolean', default: false })
+  isSuspended: boolean;
+
+  /** Коли було призупинено */
+  @Column({ type: 'timestamp', nullable: true })
+  suspendedAt: Date | null;
+
+  /** Причина призупинення */
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  suspensionReason: string | null;
 }

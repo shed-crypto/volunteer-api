@@ -78,6 +78,25 @@ export class UsersService {
       throw new ForbiddenException('Лише адміністратор може блокувати користувачів');
     }
     await this.userRepo.update(targetId, { isBlocked: true });
+
+    // Призупинити всі TrustVouch де цей користувач був поручителем
+    await this.vouchRepo.update(
+      { voucherId: targetId, isSuspended: false },
+      {
+        isSuspended: true,
+        suspendedAt: new Date(),
+        suspensionReason: 'voucher banned by admin',
+      },
+    );
+
+    // Перерахувати clearance для всіх уражених користувачів
+    const affected = await this.vouchRepo.find({
+      where: { voucherId: targetId },
+      select: ['voucheeId'],
+    });
+    for (const v of affected) {
+      await this.recalculateClearance(v.voucheeId);
+    }
   }
 
   // ─── Розблокування (FR-02e) ───────────────────────────────────────────────
@@ -88,6 +107,7 @@ export class UsersService {
     const user = await this.userRepo.findOne({ where: { id: targetId } });
     if (!user) throw new NotFoundException('Користувача не знайдено');
     await this.userRepo.update(targetId, { isBlocked: false });
+    // НЕ відновлюємо TrustVouch автоматично — адмін має вручну відновити через restoreVouch()
   }
 
   // ─── Зміна системної ролі (Admin → Coordinator/Volunteer тощо) ───────────
@@ -168,6 +188,22 @@ export class UsersService {
       );
     }
 
+    // Перевірка: поручитель повинен бути верифікованим
+    if (!voucher.isEmailVerified) {
+      throw new ForbiddenException('Поручитель повинен мати підтверджений email');
+    }
+    if (!voucher.phoneNumber || voucher.phoneNumber.length < 10) {
+      throw new ForbiddenException('Поручитель повинен мати номер телефону');
+    }
+    if (!voucher.avatarUrl) {
+      throw new ForbiddenException('Поручитель повинен мати завантажену аватарку (фото обличчя)');
+    }
+
+    // Перевірка що поручитель НЕ в бані
+    if (voucher.isBlocked) {
+      throw new ForbiddenException('Забанений користувач не може поручатися');
+    }
+
     const existing = await this.vouchRepo.findOne({
       where: { voucheeId, voucherId: voucher.id },
     });
@@ -177,7 +213,7 @@ export class UsersService {
 
     const vouch = await this.vouchRepo.save({ voucheeId, voucherId: voucher.id });
 
-    await this.checkAndUpgradeClearance(voucheeId);
+    await this.recalculateClearance(voucheeId);
 
     return vouch;
   }
@@ -211,27 +247,88 @@ export class UsersService {
 
   // ─── Приватні ─────────────────────────────────────────────────────────────
 
-  private async checkAndUpgradeClearance(userId: string): Promise<void> {
-    const count = await this.vouchRepo.count({ where: { voucheeId: userId } });
+  async recalculateClearance(userId: string): Promise<void> {
+    const activeCount = await this.vouchRepo.count({
+      where: { voucheeId: userId, isSuspended: false },
+    });
 
     const user = await this.userRepo.findOne({
       where: { id: userId },
       select: ['id', 'clearanceLevel', 'trustScore'],
     });
-
     if (!user) return;
 
-    if (count >= FRONTLINE_VOUCHES_REQUIRED &&
-        user.clearanceLevel !== ClearanceLevel.FRONTLINE) {
+    let newClearance: ClearanceLevel;
+
+    // FRONTLINE — тільки ручне підтвердження адміном
+    // Автоматично максимум до INTERNATIONAL
+    if (activeCount >= FRONTLINE_VOUCHES_REQUIRED) {
+      newClearance = ClearanceLevel.INTERNATIONAL;
+    } else if (activeCount >= 1) {
+      newClearance = ClearanceLevel.INTERNATIONAL;
+    } else {
+      newClearance = ClearanceLevel.LOCAL;
+    }
+
+    if (user.clearanceLevel !== newClearance) {
       await this.userRepo.update(userId, {
-        clearanceLevel: ClearanceLevel.FRONTLINE,
-        trustScore: Math.min(100, user.trustScore + 20),
-      });
-    } else if (count >= 1 && user.clearanceLevel === ClearanceLevel.LOCAL) {
-      await this.userRepo.update(userId, {
-        clearanceLevel: ClearanceLevel.INTERNATIONAL,
-        trustScore: Math.min(100, user.trustScore + 5),
+        clearanceLevel: newClearance,
+        trustScore: Math.min(
+          100,
+          user.trustScore + (newClearance === ClearanceLevel.INTERNATIONAL ? 5 : 0),
+        ),
       });
     }
+  }
+
+  // DEPRECATED: використовуйте recalculateClearance()
+  private async checkAndUpgradeClearance(userId: string): Promise<void> {
+    return this.recalculateClearance(userId);
+  }
+
+  async restoreVouch(vouchId: string, admin: User): Promise<TrustVouch> {
+    if (admin.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException('Лише адміністратор може відновлювати поручительства');
+    }
+
+    const vouch = await this.vouchRepo.findOne({
+      where: { id: vouchId },
+      relations: ['voucher'],
+    });
+    if (!vouch) throw new NotFoundException('Поручительство не знайдено');
+    if (!vouch.isSuspended) {
+      throw new BadRequestException('Поручительство вже активне');
+    }
+
+    if (vouch.voucher?.isBlocked) {
+      throw new ForbiddenException('Неможливо відновити: поручитель забанений');
+    }
+
+    await this.vouchRepo.update(vouchId, {
+      isSuspended: false,
+      suspendedAt: null,
+      suspensionReason: null,
+    });
+
+    await this.recalculateClearance(vouch.voucheeId);
+
+    return this.vouchRepo.findOne({
+      where: { id: vouchId },
+      relations: ['voucher', 'vouchee'],
+    }) as Promise<TrustVouch>;
+  }
+
+  async revokeVouchPermanently(vouchId: string, admin: User): Promise<void> {
+    if (admin.systemRole !== SystemRole.ADMIN) {
+      throw new ForbiddenException('Лише адміністратор може відкликати поручительство');
+    }
+
+    const vouch = await this.vouchRepo.findOne({ where: { id: vouchId } });
+    if (!vouch) throw new NotFoundException('Поручительство не знайдено');
+
+    const voucheeId = vouch.voucheeId;
+
+    await this.vouchRepo.delete(vouchId);
+    await this.recalculateClearance(voucheeId);
   }
 }
