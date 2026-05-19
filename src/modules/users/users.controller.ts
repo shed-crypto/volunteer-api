@@ -4,6 +4,7 @@ import {
   HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { UsersService } from './users.service';
 import { JwtAuthGuard, RolesGuard, Roles } from '@common/guards/jwt-auth.guard';
 import { CurrentUser } from '@common/decorators/current-user.decorator';
@@ -142,6 +143,7 @@ export class UsersController {
   // ─── Система Поручителів ──────────────────────────────────────────────────
 
   @Post(':id/vouch')
+  @Throttle({ default: { limit: 5, ttl: 3600000 } })
   @ApiOperation({
     summary: 'Поручитися за користувача (тільки FRONTLINE волонтери або Admin)',
   })

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiConsumes } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
@@ -52,6 +53,7 @@ export class RequestsController {
   }
 
   @Get()
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @ApiOperation({ summary: 'Отримати список заявок з пріоритезацією та пагінацією' })
   findAll(
     @Query('limit') limit?: number,
@@ -94,6 +96,7 @@ export class RequestsController {
   }
 
   @Get(':id')
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
   @ApiOperation({ summary: 'Деталі заявки з усіма підзадачами' })
   findOne(
     @Param('id', ParseUUIDPipe) id: string,
