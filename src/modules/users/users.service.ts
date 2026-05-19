@@ -192,9 +192,11 @@ export class UsersService {
     if (!voucher.isEmailVerified) {
       throw new ForbiddenException('Поручитель повинен мати підтверджений email');
     }
-    if (!voucher.phoneNumber || voucher.phoneNumber.length < 10) {
-      throw new ForbiddenException('Поручитель повинен мати номер телефону');
-    }
+    // NOTE(alex): phoneNumber тимчасово не перевіряється — немає SMS-сервісу.
+    // Коли SMS буде готовий — розкоментувати нижче.
+    // if (!voucher.isPhoneVerified) {
+    //   throw new ForbiddenException('Поручитель повинен мати підтверджений номер телефону');
+    // }
     if (!voucher.avatarUrl) {
       throw new ForbiddenException('Поручитель повинен мати завантажену аватарку (фото обличчя)');
     }
@@ -333,5 +335,38 @@ export class UsersService {
 
     await this.vouchRepo.delete(vouchId);
     await this.recalculateClearance(voucheeId);
+  }
+
+  /**
+   * Інфраструктура для верифікації телефону.
+   * Зараз — заглушки (stub), реальний SMS-сервіс буде додано пізніше.
+   * Потрібно для майбутньої обов'язкової перевірки в vouchForUser.
+   */
+  // TODO(alex): Implement real SMS-sending service when Twilio/AmazonSNS/etc. is available - TICKET-???
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async sendPhoneVerificationCode(userId: string): Promise<{ message: string }> {
+    console.log(`[SMS STUB] Generating verification code for user ${userId}`);
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    // В реальності — зберігаємо код + expires, відправляємо SMS
+    await this.userRepo.update(userId, {
+      phoneVerificationCode: code,
+      phoneVerificationExpires: new Date(Date.now() + 10 * 60 * 1000), // 10 хв
+    });
+    console.log(`[SMS STUB] Code for user ${userId}: ${code}`);
+    return { message: 'SMS verification not yet enabled. Code logged for dev.' };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async verifyPhone(userId: string, codeInput: string): Promise<boolean> {
+    console.log(`[SMS STUB] Verifying phone for user ${userId} with code ${codeInput}`);
+    // TODO(alex): Real verification when SMS is ready - compare code & expires
+    // For now — mark as verified (dev mode)
+    await this.userRepo.update(userId, {
+      isPhoneVerified: true,
+      phoneVerificationCode: null,
+      phoneVerificationExpires: null,
+    });
+    console.log(`[SMS STUB] Phone for user ${userId} marked as verified`);
+    return true;
   }
 }

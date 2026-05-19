@@ -93,6 +93,39 @@ export class User extends BaseEntity {
   @Column({ name: 'is_identity_verified', type: 'boolean', default: false })
   isIdentityVerified: boolean;
 
+  // ─── Телефон-верифікація (інфраструктура для майбутнього SMS-сервісу) ───────
+
+  /**
+   * Чи підтверджений номер телефону.
+   * false за замовчуванням. Підтверджується після введення коду з SMS.
+   */
+  @Column({ name: 'is_phone_verified', type: 'boolean', default: false })
+  isPhoneVerified: boolean;
+
+  /**
+   * Тимчасовий код для підтвердження телефону (6 цифр).
+   * Обнуляється після успішної верифікації.
+   */
+  @Column({
+    name: 'phone_verification_code',
+    type: 'varchar',
+    length: 6,
+    nullable: true,
+  })
+  @Exclude()
+  phoneVerificationCode: string | null;
+
+  /**
+   * Дата закінчення дії коду для підтвердження телефону.
+   */
+  @Column({
+    name: 'phone_verification_expires',
+    type: 'timestamp',
+    nullable: true,
+  })
+  @Exclude()
+  phoneVerificationExpires: Date | null;
+
   /**
    * Тимчасовий токен для підтвердження пошти (UUID v4).
    * Обнуляється після успішної верифікації.

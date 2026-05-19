@@ -122,15 +122,26 @@ describe('UsersService — vouchForUser (6.5)', () => {
     );
   });
 
-  it('6.5c — відхилити якщо немає телефону', async () => {
-    const voucher = createVoucher({ phoneNumber: '' });
+  // NOTE(alex): phoneNumber тимчасово не перевіряється — немає SMS-сервісу.
+  // 6.5c — видалено (перевірка телефону). Повернути коли SMS готовий.
+  // it('6.5c — відхилити якщо немає телефону', async () => {
+  //   const voucher = createVoucher({ phoneNumber: '' });
+  //   const vouchee = createVouchee();
+  //   (userRepo.findOne as jest.Mock).mockResolvedValueOnce(vouchee);
+  //   await expect(service.vouchForUser('vouchee-id', voucher)).rejects.toThrow(
+  //     ForbiddenException,
+  //   );
+  // });
+
+  it('6.5c — дозволити поручитися навіть без телефону (тимчасово)', async () => {
+    const voucher = createVoucher({ phoneNumber: '', isPhoneVerified: false });
     const vouchee = createVouchee();
 
     (userRepo.findOne as jest.Mock).mockResolvedValueOnce(vouchee);
+    (userRepo.findOne as jest.Mock).mockResolvedValueOnce(vouchee);
 
-    await expect(service.vouchForUser('vouchee-id', voucher)).rejects.toThrow(
-      ForbiddenException,
-    );
+    const result = await service.vouchForUser('vouchee-id', voucher);
+    expect(result).toBeDefined();
   });
 
   it('6.5d — відхилити якщо немає аватарки', async () => {
