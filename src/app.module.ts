@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, RequestMethod, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -22,6 +22,9 @@ import { ChatModule } from '@modules/chat/chat.module';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
 import { EmailModule } from '@modules/email/email.module';
 import { TaskReportsModule } from '@modules/task-reports/task-reports.module';
+
+// ─── Middleware ────────────────────────────────────────────────────────────────
+import { RemoveExifMiddleware } from '@common/middleware/remove-exif.middleware';
 
 @Module({
   imports: [
@@ -86,4 +89,17 @@ import { TaskReportsModule } from '@modules/task-reports/task-reports.module';
     },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(RemoveExifMiddleware)
+      .forRoutes(
+        { path: 'requests', method: RequestMethod.POST },
+        { path: 'requests/:id', method: RequestMethod.PATCH },
+        { path: 'requests/:id/add-info', method: RequestMethod.PATCH },
+        { path: 'tasks/:taskId/reports', method: RequestMethod.POST },
+        { path: 'chats/:id/messages', method: RequestMethod.POST },
+        { path: 'messages/:id/attachments', method: RequestMethod.PATCH },
+      );
+  }
+}
