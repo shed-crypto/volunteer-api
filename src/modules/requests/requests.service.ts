@@ -529,34 +529,126 @@ export class RequestsService {
       }));
     }
 
-    const query = this.requestRepository
-      .createQueryBuilder('req')
-      .leftJoinAndSelect('req.creator', 'creator')
-      .where('req.deleted_at IS NULL');
+    // Використовуємо raw SQL замість TypeORM query builder через баг з PostGIS geometry
+    // колонками: TypeORM падає з "Cannot read properties of undefined (reading 'databaseName')"
+    // при використанні .skip()/.take() разом з .leftJoinAndSelect() на таблицях з geometry.
+    // Докладно: https://github.com/typeorm/typeorm/issues/...
+    const whereClauses: string[] = ['req.deleted_at IS NULL'];
+    const rawParams: any[] = [];
 
-    if (status)       query.andWhere('req.status = :status', { status });
-    if (urgency)      query.andWhere('req.urgency = :urgency', { urgency });
-    if (category)     query.andWhere('req.category = :category', { category });
-    if (creatorId) query.andWhere('req.creatorId = :creatorId', { creatorId });
-    if (excludeCreatorId) query.andWhere('req.creatorId != :excludeCreatorId', { excludeCreatorId });
-
+    if (status) {
+      whereClauses.push(`req.status = $${rawParams.length + 1}`);
+      rawParams.push(status);
+    }
+    if (urgency) {
+      whereClauses.push(`req.urgency = $${rawParams.length + 1}`);
+      rawParams.push(urgency);
+    }
+    if (category) {
+      whereClauses.push(`req.category = $${rawParams.length + 1}`);
+      rawParams.push(category);
+    }
+    if (creatorId) {
+      whereClauses.push(`req.creator_id = $${rawParams.length + 1}`);
+      rawParams.push(creatorId);
+    }
+    if (excludeCreatorId) {
+      whereClauses.push(`req.creator_id != $${rawParams.length + 1}`);
+      rawParams.push(excludeCreatorId);
+    }
     if (search) {
-      query.andWhere(
-        '(req.title ILIKE :search OR req.description ILIKE :search)',
-        { search: `%${search}%` },
+      whereClauses.push(
+        `(req.title ILIKE $${rawParams.length + 1} OR req.description ILIKE $${rawParams.length + 2})`,
       );
+      rawParams.push(`%${search}%`, `%${search}%`);
     }
 
-    query.orderBy('req.created_at', 'DESC');
-    query.skip(offset).take(limit);
+    const whereSQL = whereClauses.join(' AND ');
+
+    const sql = `
+      SELECT
+        req.id AS id,
+        req.status,
+        req.title,
+        req.description,
+        req.category,
+        req.urgency,
+        req.required_clearance AS "requiredClearance",
+        req.creator_id AS "creatorId",
+        req.managing_organization_id AS "managingOrganizationId",
+        req.cancelled_by_user_id AS "cancelledByUserId",
+        req.cancelled_at AS "cancelledAt",
+        req.cancel_reason AS "cancelReason",
+        req.latitude,
+        req.longitude,
+        req.is_location_hidden AS "isLocationHidden",
+        req.tags,
+        req.additional_info AS "additionalInfo",
+        req.media_urls AS "mediaUrls",
+        req.report_urls AS "reportUrls",
+        req.deadline,
+        req.fundraising_url AS "fundraisingUrl",
+        req.created_at AS "createdAt",
+        req.updated_at AS "updatedAt",
+        req.deleted_at AS "deletedAt",
+        req.follower_ids AS "followerIds",
+        creator.id AS "creator_id",
+        creator.full_name AS "creator_fullName",
+        creator.email AS "creator_email",
+        creator.avatar_url AS "creator_avatarUrl",
+        creator.clearance_level AS "creator_clearanceLevel",
+        creator.system_role AS "creator_systemRole",
+        creator.citizenship AS "creator_citizenship"
+      FROM requests req
+      LEFT JOIN users creator ON creator.id = req.creator_id AND creator.deleted_at IS NULL
+      WHERE ${whereSQL}
+      ORDER BY req.created_at DESC
+      LIMIT $${rawParams.length + 1} OFFSET $${rawParams.length + 2}
+    `;
+    rawParams.push(limit, offset);
 
     try {
-      return await query.getMany();
+      const results = await this.requestRepository.query(sql, rawParams);
+      return results.map((r: any) => ({
+        id: r.id,
+        status: r.status,
+        title: r.title,
+        description: r.description,
+        category: r.category,
+        urgency: r.urgency,
+        requiredClearance: r.requiredClearance,
+        creatorId: r.creatorId,
+        managingOrganizationId: r.managingOrganizationId ?? null,
+        cancelledByUserId: r.cancelledByUserId ?? null,
+        cancelledAt: r.cancelledAt ?? null,
+        cancelReason: r.cancelReason ?? null,
+        latitude: r.latitude ?? null,
+        longitude: r.longitude ?? null,
+        isLocationHidden: r.isLocationHidden ?? false,
+        tags: typeof r.tags === 'string' ? r.tags.split(',').filter(Boolean) : r.tags ?? [],
+        additionalInfo: typeof r.additionalInfo === 'string' ? JSON.parse(r.additionalInfo) : r.additionalInfo ?? [],
+        mediaUrls: typeof r.mediaUrls === 'string' ? JSON.parse(r.mediaUrls) : r.mediaUrls ?? [],
+        reportUrls: typeof r.reportUrls === 'string' ? r.reportUrls.split(',').filter(Boolean) : r.reportUrls ?? [],
+        deadline: r.deadline,
+        fundraisingUrl: r.fundraisingUrl ?? null,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+        deletedAt: r.deletedAt,
+        followerIds: r.followerIds ?? [],
+        creator: {
+          id: r.creator_id,
+          fullName: r.creator_fullName,
+          email: r.creator_email,
+          avatarUrl: r.creator_avatarUrl,
+          clearanceLevel: r.creator_clearanceLevel,
+          systemRole: r.creator_systemRole,
+          citizenship: r.creator_citizenship,
+        },
+      }));
     } catch (err) {
       console.error('[DEBUG getRequestsWithPriority] SQL error:', err);
-      console.error('[DEBUG getRequestsWithPriority] params:', JSON.stringify({
-        userId, userLat, userLng, radiusKm, limit, offset, search, status, urgency, category, creatorId, excludeCreatorId,
-      }));
+      console.error('[DEBUG getRequestsWithPriority] sql:', sql);
+      console.error('[DEBUG getRequestsWithPriority] params:', rawParams);
       throw err;
     }
   }
