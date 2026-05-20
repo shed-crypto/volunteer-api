@@ -6,6 +6,7 @@ import { TaskDelegation } from './entities/task-delegation.entity';
 import { TrustVouch } from '@modules/users/entities/trust-vouch.entity';
 import { Request } from '@modules/requests/entities/request.entity';
 import { Chat } from '@modules/chat/entities/chat.entity';
+import { OrganizationMember } from '@modules/organizations/entities/organization-member.entity';
 import { TasksService } from './tasks.service';
 import { TasksController } from './tasks.controller';
 import { NotificationsModule } from '@modules/notifications/notifications.module';
@@ -15,7 +16,7 @@ import { ChatModule } from '@modules/chat/chat.module';
   imports: [
     TypeOrmModule.forFeature([
       Task, TaskAssignment, TaskDelegation,
-      TrustVouch, Request, Chat,
+      TrustVouch, Request, Chat, OrganizationMember,
     ]),
     NotificationsModule,
     ChatModule,

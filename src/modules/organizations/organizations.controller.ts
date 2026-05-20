@@ -137,6 +137,24 @@ export class OrganizationsController {
     return this.orgsService.getMembers(id);
   }
 
+  @Get(':id/tasks')
+  @ApiOperation({ summary: 'Підзадачі, делеговані організації' })
+  getOrganizationTasks(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.orgsService.getOrganizationTasks(id, user);
+  }
+
+  @Get(':id/requests')
+  @ApiOperation({ summary: 'Заявки, які координує або виконує організація' })
+  getOrganizationRequests(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.orgsService.getOrganizationRequests(id, user);
+  }
+
   @Get(':id/members/me/privileges')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Отримати мої права в організації' })

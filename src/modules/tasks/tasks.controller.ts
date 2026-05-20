@@ -67,6 +67,16 @@ export class TasksController {
     return this.tasksService.update(id, dto, user);
   }
 
+  @Delete('tasks/:id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Видалити підзадачу, якщо її ще не взяли в роботу' })
+  remove(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ): Promise<void> {
+    return this.tasksService.deleteTask(id, user);
+  }
+
   // ─── Взяти задачу в роботу (ключовий Sequence) ───────────────────────────
 
   @Post('tasks/:id/assign')
@@ -188,5 +198,25 @@ export class TasksController {
     @CurrentUser() user: User,
   ): Promise<TaskDelegation> {
     return this.tasksService.delegateTask(id, dto, user);
+  }
+
+  @Post('tasks/:id/delegation/accept')
+  @ApiOperation({ summary: 'Прийняти делегацію підзадачі організацією' })
+  acceptDelegation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('organizationId', ParseUUIDPipe) organizationId: string,
+    @CurrentUser() user: User,
+  ): Promise<TaskDelegation> {
+    return this.tasksService.acceptDelegation(id, organizationId, user);
+  }
+
+  @Post('tasks/:id/delegation/decline')
+  @ApiOperation({ summary: 'Відхилити делегацію підзадачі організацією' })
+  declineDelegation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('organizationId', ParseUUIDPipe) organizationId: string,
+    @CurrentUser() user: User,
+  ): Promise<TaskDelegation> {
+    return this.tasksService.declineDelegation(id, organizationId, user);
   }
 }

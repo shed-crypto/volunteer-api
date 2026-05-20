@@ -10,6 +10,9 @@ import { OrganizationMember } from './entities/organization-member.entity';
 import { Hub } from './entities/hub.entity';
 import { OrganizationSettings } from './entities/organization-settings.entity';
 import { OrganizationJoinRequest } from './entities/organization-join-request.entity';
+import { Request } from '@modules/requests/entities/request.entity';
+import { Task } from '@modules/tasks/entities/task.entity';
+import { TaskDelegation } from '@modules/tasks/entities/task-delegation.entity';
 import { User } from '@modules/users/entities/user.entity';
 import { OrgRole, SystemRole, ChatType } from '@common/enums';
 import { ChatService } from '@modules/chat/chat.service';
@@ -27,6 +30,10 @@ export class OrganizationsService {
     private readonly settingsRepo: Repository<OrganizationSettings>,
     @InjectRepository(OrganizationJoinRequest)
     private readonly joinRequestRepo: Repository<OrganizationJoinRequest>,
+    @InjectRepository(Request)
+    private readonly requestRepo: Repository<Request>,
+    @InjectRepository(TaskDelegation)
+    private readonly taskDelegationRepo: Repository<TaskDelegation>,
     private readonly chatService: ChatService,
   ) {}
 
@@ -251,6 +258,41 @@ export class OrganizationsService {
     });
   }
 
+  async getOrganizationTasks(orgId: string, user: User): Promise<Task[]> {
+    await this.ensureMemberOrAdmin(orgId, user);
+    const delegations = await this.taskDelegationRepo.find({
+      where: { organizationId: orgId },
+      relations: ['task', 'task.request', 'task.assignments', 'task.delegations'],
+      order: { createdAt: 'DESC' },
+    });
+    return delegations
+      .filter((delegation) => delegation.task)
+      .map((delegation) => ({
+        ...delegation.task,
+        delegations: [delegation],
+      }))
+      .filter(Boolean) as Task[];
+  }
+
+  async getOrganizationRequests(orgId: string, user: User): Promise<Request[]> {
+    await this.ensureMemberOrAdmin(orgId, user);
+    const [managedRequests, delegatedTasks] = await Promise.all([
+      this.requestRepo.find({
+        where: { managingOrganizationId: orgId },
+        relations: ['tasks'],
+        order: { createdAt: 'DESC' },
+      }),
+      this.getOrganizationTasks(orgId, user),
+    ]);
+
+    const byId = new Map<string, Request>();
+    for (const request of managedRequests) byId.set(request.id, request);
+    for (const task of delegatedTasks) {
+      if ((task as any).request) byId.set((task as any).request.id, (task as any).request);
+    }
+    return Array.from(byId.values()).sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }
+
   async getMemberPrivileges(orgId: string, userId: string) {
     const member = await this.getMember(orgId, userId);
     const isLeader = member?.orgRole === OrgRole.LEADER;
@@ -419,6 +461,16 @@ export class OrganizationsService {
       throw new ForbiddenException(
         'Потрібні права лідера або координатора організації',
       );
+    }
+  }
+
+  private async ensureMemberOrAdmin(orgId: string, user: User): Promise<void> {
+    if (user.systemRole === SystemRole.ADMIN) return;
+    const membership = await this.memberRepo.findOne({
+      where: { organizationId: orgId, userId: user.id, isActive: true },
+    });
+    if (!membership) {
+      throw new ForbiddenException('Потрібно бути учасником організації');
     }
   }
 }
