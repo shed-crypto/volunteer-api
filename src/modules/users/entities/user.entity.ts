@@ -93,6 +93,14 @@ export class User extends BaseEntity {
   @Column({ name: 'is_identity_verified', type: 'boolean', default: false })
   isIdentityVerified: boolean;
 
+  /**
+   * Якщо true, clearanceLevel=FRONTLINE був встановлений адміном вручну.
+   * recalculateClearance() не знижуватиме рівень нижче FRONTLINE,
+   * поки адмін явно не відкличе цей прапорець.
+   */
+  @Column({ name: 'frontline_granted_by_admin', type: 'boolean', default: false })
+  frontlineGrantedByAdmin: boolean;
+
   // ─── Телефон-верифікація (інфраструктура для майбутнього SMS-сервісу) ───────
 
   /**

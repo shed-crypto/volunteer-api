@@ -3,10 +3,12 @@ import {
   ConflictException, BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { User } from './entities/user.entity';
 import { TrustVouch } from './entities/trust-vouch.entity';
 import { Vehicle } from './entities/vehicle.entity';
+import { TaskAssignment } from '@modules/tasks/entities/task-assignment.entity';
+import { AssignmentStatus } from '@common/enums';
 import { SystemRole, ClearanceLevel } from '@common/enums';
 import { AdminCreateUserDto } from './dto/create-user.dto';
 
@@ -137,7 +139,17 @@ export class UsersService {
     const target = await this.userRepo.findOne({ where: { id: targetId } });
     if (!target) throw new NotFoundException('Користувача не знайдено');
 
-    await this.userRepo.update(targetId, { clearanceLevel: newLevel });
+    const updateData: Partial<User> = { clearanceLevel: newLevel };
+
+    // Якщо адмін вручну встановлює FRONTLINE — ставимо прапорець
+    if (newLevel === ClearanceLevel.FRONTLINE) {
+      updateData.frontlineGrantedByAdmin = true;
+    } else {
+      // Якщо знімає FRONTLINE — скидаємо прапорець
+      updateData.frontlineGrantedByAdmin = false;
+    }
+
+    await this.userRepo.update(targetId, updateData);
     return this.findById(targetId);
   }
 
@@ -259,9 +271,14 @@ export class UsersService {
 
     const user = await this.userRepo.findOne({
       where: { id: userId },
-      select: ['id', 'clearanceLevel', 'trustScore'],
+      select: ['id', 'clearanceLevel', 'trustScore', 'frontlineGrantedByAdmin'],
     });
     if (!user) return;
+
+    // Якщо адмін вручну призначив FRONTLINE — не знижуємо автоматично
+    if (user.frontlineGrantedByAdmin && user.clearanceLevel === ClearanceLevel.FRONTLINE) {
+      return;
+    }
 
     let newClearance: ClearanceLevel;
 
@@ -276,6 +293,11 @@ export class UsersService {
     }
 
     if (user.clearanceLevel !== newClearance) {
+      // Якщо користувач втрачає FRONTLINE, автоматично знімаємо його з активних завдань
+      if (user.clearanceLevel === ClearanceLevel.FRONTLINE) {
+        await this.withdrawFromActiveTasks(userId);
+      }
+
       await this.userRepo.update(userId, {
         clearanceLevel: newClearance,
         trustScore: Math.min(
@@ -283,6 +305,32 @@ export class UsersService {
           user.trustScore + (newClearance === ClearanceLevel.INTERNATIONAL ? 5 : 0),
         ),
       });
+    }
+  }
+
+  /**
+   * Автоматично знімає користувача з усіх активних призначень,
+   * якщо він втратив рівень FRONTLINE.
+   * Активними вважаються ASSIGNED, EN_ROUTE, ON_SITE.
+   */
+  private async withdrawFromActiveTasks(userId: string): Promise<void> {
+    const assignments = await this.userRepo.manager.find(TaskAssignment, {
+      where: {
+        userId,
+        status: In([AssignmentStatus.ASSIGNED, AssignmentStatus.EN_ROUTE, AssignmentStatus.ON_SITE]),
+      },
+    });
+
+    for (const assignment of assignments) {
+      await this.userRepo.manager.update(TaskAssignment, assignment.id, {
+        status: AssignmentStatus.WITHDRAWN,
+      });
+    }
+
+    if (assignments.length > 0) {
+      console.log(
+        `[Clearance] Auto-withdrew user ${userId} from ${assignments.length} active task(s) due to clearance downgrade`,
+      );
     }
   }
 
