@@ -3,6 +3,7 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
+  Unique,
 } from 'typeorm';
 import { BaseEntity } from '@common/entities/base.entity';
 import { Task } from './task.entity';
@@ -16,6 +17,7 @@ import { User } from '@modules/users/entities/user.entity';
  * Організація-отримувач бачить задачу у своїй Kanban-дошці.
  */
 @Entity('task_delegations')
+@Unique('UQ_task_delegations_task_org', ['taskId', 'organizationId'])
 export class TaskDelegation extends BaseEntity {
   @ManyToOne(() => Task, (task) => task.delegations, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'task_id' })

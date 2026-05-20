@@ -92,6 +92,15 @@ export enum TaskStatus {
   CANCELLED = 'cancelled',
 }
 
+/** Хто створив підзадачу на дошці заявки */
+export enum TaskOrigin {
+  REQUESTER = 'requester',
+  COORDINATOR = 'coordinator',
+  ADMIN = 'admin',
+  ORGANIZATION = 'organization',
+  SYSTEM = 'system',
+}
+
 /** Статус волонтера, призначеного на підзадачу */
 export enum AssignmentStatus {
   ASSIGNED = 'assigned',
