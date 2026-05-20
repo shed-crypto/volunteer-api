@@ -1,7 +1,7 @@
 import {
   IsString, IsOptional, IsEnum, IsBoolean,
   IsNumber, IsUrl, Min, Max, IsDateString,
-  MinLength, MaxLength,
+  MinLength, MaxLength, IsUUID,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -73,6 +73,11 @@ export class CreateRequestDto {
   @IsOptional()
   @IsString()
   fundraisingUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Організація, яка координує заявку' })
+  @IsOptional()
+  @IsUUID()
+  managingOrganizationId?: string;
 
   @ApiPropertyOptional({ type: 'array', items: { type: 'object' } })
   @IsOptional()

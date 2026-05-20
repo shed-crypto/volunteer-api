@@ -17,6 +17,7 @@ import {
 } from '@common/enums';
 import { User } from '@modules/users/entities/user.entity';
 import { Task } from '@modules/tasks/entities/task.entity';
+import { Organization } from '@modules/organizations/entities/organization.entity';
 
 /**
  * Заявка (Request / Epic) — головна бізнес-сутність системи.
@@ -39,6 +40,26 @@ export class Request extends BaseEntity {
 
   @Column({ name: 'creator_id', type: 'uuid', nullable: true })
   creatorId: string;
+
+  @ManyToOne(() => Organization, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'managing_organization_id' })
+  managingOrganization: Organization;
+
+  @Column({ name: 'managing_organization_id', type: 'uuid', nullable: true })
+  managingOrganizationId: string;
+
+  @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'cancelled_by_user_id' })
+  cancelledBy: User;
+
+  @Column({ name: 'cancelled_by_user_id', type: 'uuid', nullable: true })
+  cancelledByUserId: string;
+
+  @Column({ name: 'cancelled_at', type: 'timestamptz', nullable: true })
+  cancelledAt: Date;
+
+  @Column({ name: 'cancel_reason', type: 'text', nullable: true })
+  cancelReason: string;
 
   @Column({ type: 'varchar', length: 500 })
   title: string;

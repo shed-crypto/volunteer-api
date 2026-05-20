@@ -243,6 +243,16 @@ export class RequestsController {
     return this.requestsService.markAsPendingReview(id, user);
   }
 
+  @Post(':id/cancel')
+  @ApiOperation({ summary: 'Скасувати заявку з причиною' })
+  cancel(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('reason') reason: string,
+    @CurrentUser() user: User,
+  ): Promise<Request> {
+    return this.requestsService.cancel(id, reason, user);
+  }
+
   @Post(':id/confirm-completion')
   @ApiOperation({ summary: 'Підтвердити завершення заявки' })
   confirmCompletion(
