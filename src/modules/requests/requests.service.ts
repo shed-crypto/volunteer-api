@@ -558,4 +558,51 @@ export class RequestsService {
       console.error('[AccessLog] Failed to log access:', err);
     }
   }
+
+  // ─── Admin: access logs with filters ─────────────────────────────────────────
+  async getAccessLogs(filters: {
+    requestId?: string;
+    userId?: string;
+    action?: string;
+    from?: string;
+    to?: string;
+    limit: number;
+    offset: number;
+  }): Promise<any[]> {
+    const qb = this.accessLogRepository
+      .createQueryBuilder('al')
+      .leftJoinAndSelect('al.request', 'request')
+      .orderBy('al.createdAt', 'DESC')
+      .take(filters.limit)
+      .skip(filters.offset);
+
+    if (filters.requestId) {
+      qb.andWhere('al.requestId = :requestId', { requestId: filters.requestId });
+    }
+    if (filters.userId) {
+      qb.andWhere('al.userId = :userId', { userId: filters.userId });
+    }
+    if (filters.action) {
+      qb.andWhere('al.action = :action', { action: filters.action });
+    }
+    if (filters.from) {
+      qb.andWhere('al.createdAt >= :from', { from: new Date(filters.from) });
+    }
+    if (filters.to) {
+      qb.andWhere('al.createdAt <= :to', { to: new Date(filters.to) });
+    }
+
+    const logs = await qb.getMany();
+    return logs.map((log) => ({
+      id: log.id,
+      userId: log.userId,
+      requestId: log.requestId,
+      action: log.action,
+      ip: log.ip,
+      userAgent: log.userAgent,
+      clearanceAtAccess: log.clearanceAtAccess,
+      requestTitle: (log as any).request?.title || null,
+      createdAt: log.createdAt,
+    }));
+  }
 }

@@ -13,7 +13,7 @@ import { RequestsService } from './requests.service';
 import { CreateRequestDto, AddInfoRequestDto } from './dto/create-request.dto';
 import { UpdateRequestDto } from './dto/update-request.dto';
 import { FindRequestsDto } from './dto/find-requests.dto';
-import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
+import { JwtAuthGuard, RolesGuard, Roles } from '@common/guards/jwt-auth.guard';
 import { CurrentUser } from '@common/decorators/current-user.decorator';
 import { User } from '@modules/users/entities/user.entity';
 import { Request } from './entities/request.entity';
@@ -247,5 +247,30 @@ export class RequestsController {
     @CurrentUser() user: User,
   ): Promise<Request> {
     return this.requestsService.returnToProgress(id, user);
+  }
+
+  // ─── Admin: Access Logs ──────────────────────────────────────────────────
+  @Get('admin/access-logs')
+  @UseGuards(RolesGuard)
+  @Roles(SystemRole.ADMIN)
+  @ApiOperation({ summary: 'Аудит доступу до заявок (Admin)' })
+  getAccessLogs(
+    @Query('requestId') requestId?: string,
+    @Query('userId') userId?: string,
+    @Query('action') action?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('limit') limit?: number,
+    @Query('offset') offset?: number,
+  ): Promise<any[]> {
+    return this.requestsService.getAccessLogs({
+      requestId,
+      userId,
+      action,
+      from,
+      to,
+      limit: limit ? parseInt(limit as any) : 50,
+      offset: offset ? parseInt(offset as any) : 0,
+    });
   }
 }
