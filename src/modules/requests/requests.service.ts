@@ -548,6 +548,7 @@ export class RequestsService {
     }
 
     query.orderBy('req.created_at', 'DESC');
+    query.skip(offset).take(limit);
 
     try {
       return await query.getMany();

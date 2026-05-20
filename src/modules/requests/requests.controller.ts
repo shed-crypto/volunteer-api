@@ -77,11 +77,17 @@ export class RequestsController {
       });
     }
 
+    // Only use geo-search when all three are provided
+    const userLat = latitude != null ? parseFloat(latitude as any) : undefined;
+    const userLng = longitude != null ? parseFloat(longitude as any) : undefined;
+    const rad = radiusKm != null ? parseFloat(radiusKm as any) : undefined;
+    const useGeo = userLat != null && userLng != null && rad != null && rad > 0;
+
     return this.requestsService.getRequestsWithPriority({
       userId: user?.id,
-      userLat: latitude ? parseFloat(latitude as any) : undefined,
-      userLng: longitude ? parseFloat(longitude as any) : undefined,
-      radiusKm: radiusKm ? parseFloat(radiusKm as any) : undefined,
+      userLat: useGeo ? userLat : undefined,
+      userLng: useGeo ? userLng : undefined,
+      radiusKm: useGeo ? rad : undefined,
       limit: limit ? parseInt(limit as any) : 20,
       offset: offset ? parseInt(offset as any) : 0,
       search,
