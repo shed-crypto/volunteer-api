@@ -442,6 +442,25 @@ export class RequestsService {
   }): Promise<any[]> {
     const { userId, userLat, userLng, radiusKm, limit = 20, offset = 0, search, status, urgency, category, creatorId, excludeCreatorId } = params;
 
+    // Якщо потрібно сортувати за відстанню - використовуємо raw query,
+    // оскільки TypeORM .skip()/.take() дають помилку з об'єднаною aliasing
+    if (userLat != null && userLng != null) {
+      const sql = `
+        SELECT req.*, creator.*,
+          ST_Distance(
+            req.exact_location::geography,
+            ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
+          ) AS distance
+        FROM requests req
+        LEFT JOIN users creator ON creator.id = req.creator_id AND creator.deleted_at IS NULL
+        WHERE req.deleted_at IS NULL
+        ORDER BY distance ASC NULLS LAST
+        LIMIT $3 OFFSET $4
+      `;
+      const results = await this.requestRepository.query(sql, [userLng, userLat, limit, offset]);
+      return results;
+    }
+
     const query = this.requestRepository
       .createQueryBuilder('req')
       .leftJoinAndSelect('req.creator', 'creator')
@@ -460,36 +479,17 @@ export class RequestsService {
       );
     }
 
-    if (userLat != null && userLng != null) {
-      query.addSelect(
-        `ST_Distance(
-          req.exact_location::geography,
-          ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography
-        )`,
-        'distance',
-      );
-      query.setParameter('lat', userLat);
-      query.setParameter('lng', userLng);
-      
-      if (radiusKm) {
-        query.andWhere(
-          `req.exact_location IS NOT NULL AND ST_DWithin(
-            req.exact_location::geography,
-            ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
-            :radiusMeters
-          )`,
-          { radiusMeters: radiusKm * 1000 },
-        );
-      }
-      
-      query.orderBy('distance', 'ASC');
-    } else {
-      query.orderBy('req.created_at', 'DESC');
+    query.orderBy('req.created_at', 'DESC');
+
+    try {
+      return await query.getMany();
+    } catch (err) {
+      console.error('[DEBUG getRequestsWithPriority] SQL error:', err);
+      console.error('[DEBUG getRequestsWithPriority] params:', JSON.stringify({
+        userId, userLat, userLng, radiusKm, limit, offset, search, status, urgency, category, creatorId, excludeCreatorId,
+      }));
+      throw err;
     }
-
-    query.skip(offset).take(limit);
-
-    return query.getMany();
   }
 
   // ─── Статусні операції ─────────────────────────────────────────────────
