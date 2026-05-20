@@ -395,9 +395,10 @@ export class RequestsService {
     status?: string;
     urgency?: string;
     category?: string;
+    creatorId?: string;
     excludeCreatorId?: string;
   }): Promise<any[]> {
-    const { userId, userLat, userLng, limit = 20, offset = 0, search, status, urgency, category, excludeCreatorId } = params;
+    const { userId, userLat, userLng, limit = 20, offset = 0, search, status, urgency, category, creatorId, excludeCreatorId } = params;
 
     const query = this.requestRepository
       .createQueryBuilder('req')
@@ -407,6 +408,7 @@ export class RequestsService {
     if (status)       query.andWhere('req.status = :status', { status });
     if (urgency)      query.andWhere('req.urgency = :urgency', { urgency });
     if (category)     query.andWhere('req.category = :category', { category });
+    if (creatorId) query.andWhere('req.creatorId = :creatorId', { creatorId });
     if (excludeCreatorId) query.andWhere('req.creatorId != :excludeCreatorId', { excludeCreatorId });
 
     if (search) {

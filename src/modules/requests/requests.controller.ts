@@ -60,6 +60,12 @@ export class RequestsController {
     @Query('offset') offset?: number,
     @Query('latitude') latitude?: number,
     @Query('longitude') longitude?: number,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+    @Query('urgency') urgency?: string,
+    @Query('category') category?: string,
+    @Query('creatorId') creatorId?: string,
+    @Query('excludeCreatorId') excludeCreatorId?: string,
     @CurrentUser() user?: User,
   ): Promise<any[]> {
     // REQUESTER бачить тільки свої заявки
@@ -76,6 +82,12 @@ export class RequestsController {
       userLng: longitude ? parseFloat(longitude as any) : undefined,
       limit: limit ? parseInt(limit as any) : 20,
       offset: offset ? parseInt(offset as any) : 0,
+      search,
+      status,
+      urgency,
+      category,
+      creatorId,
+      excludeCreatorId,
     });
   }
 
