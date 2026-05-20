@@ -583,7 +583,13 @@ export class RequestsService {
   }
 
   private obfuscateLocation(request: Request, viewer: User): Request {
-    if (viewer.clearanceLevel === ClearanceLevel.FRONTLINE || viewer.systemRole === SystemRole.ADMIN) {
+    const isOwner = viewer.id === request.creatorId;
+    const isCoordinator = viewer.systemRole === SystemRole.COORDINATOR;
+    const isAdmin = viewer.systemRole === SystemRole.ADMIN;
+    const isFrontline = viewer.clearanceLevel === ClearanceLevel.FRONTLINE;
+
+    // Власник, координатор та адмін бачать точні координати
+    if (isOwner || isCoordinator || isAdmin || isFrontline) {
       return request; // без обфускації
     }
 
