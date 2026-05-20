@@ -458,7 +458,13 @@ export class RequestsService {
         LIMIT $3 OFFSET $4
       `;
       const results = await this.requestRepository.query(sql, [userLng, userLat, limit, offset]);
-      return results;
+      return results.map((r: any) => ({
+        ...r,
+        tags: typeof r.tags === 'string' ? r.tags.split(',').filter(Boolean) : r.tags ?? [],
+        mediaUrls: typeof r.media_urls === 'string' ? JSON.parse(r.media_urls) : r.media_urls ?? [],
+        additionalInfo: typeof r.additional_info === 'string' ? JSON.parse(r.additional_info) : r.additional_info ?? [],
+        reportUrls: typeof r.report_urls === 'string' ? r.report_urls.split(',').filter(Boolean) : r.report_urls ?? [],
+      }));
     }
 
     const query = this.requestRepository
