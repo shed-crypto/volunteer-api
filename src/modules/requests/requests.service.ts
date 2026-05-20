@@ -430,6 +430,7 @@ export class RequestsService {
     userId?: string;
     userLat?: number;
     userLng?: number;
+    radiusKm?: number;
     limit?: number;
     offset?: number;
     search?: string;
@@ -439,7 +440,7 @@ export class RequestsService {
     creatorId?: string;
     excludeCreatorId?: string;
   }): Promise<any[]> {
-    const { userId, userLat, userLng, limit = 20, offset = 0, search, status, urgency, category, creatorId, excludeCreatorId } = params;
+    const { userId, userLat, userLng, radiusKm, limit = 20, offset = 0, search, status, urgency, category, creatorId, excludeCreatorId } = params;
 
     const query = this.requestRepository
       .createQueryBuilder('req')
@@ -469,6 +470,18 @@ export class RequestsService {
       );
       query.setParameter('lat', userLat);
       query.setParameter('lng', userLng);
+      
+      if (radiusKm) {
+        query.andWhere(
+          `req.exact_location IS NOT NULL AND ST_DWithin(
+            req.exact_location::geography,
+            ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
+            :radiusMeters
+          )`,
+          { radiusMeters: radiusKm * 1000 },
+        );
+      }
+      
       query.orderBy('distance', 'ASC');
     } else {
       query.orderBy('req.created_at', 'DESC');

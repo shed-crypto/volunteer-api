@@ -53,7 +53,7 @@ export class RequestsController {
   }
 
   @Get()
-  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  @Throttle({ default: { limit: 120, ttl: 60000 } })
   @ApiOperation({ summary: 'Отримати список заявок з пріоритезацією та пагінацією' })
   findAll(
     @Query('limit') limit?: number,
@@ -65,6 +65,7 @@ export class RequestsController {
     @Query('urgency') urgency?: string,
     @Query('category') category?: string,
     @Query('creatorId') creatorId?: string,
+    @Query('radiusKm') radiusKm?: number,
     @Query('excludeCreatorId') excludeCreatorId?: string,
     @CurrentUser() user?: User,
   ): Promise<any[]> {
@@ -80,6 +81,7 @@ export class RequestsController {
       userId: user?.id,
       userLat: latitude ? parseFloat(latitude as any) : undefined,
       userLng: longitude ? parseFloat(longitude as any) : undefined,
+      radiusKm: radiusKm ? parseFloat(radiusKm as any) : undefined,
       limit: limit ? parseInt(limit as any) : 20,
       offset: offset ? parseInt(offset as any) : 0,
       search,
