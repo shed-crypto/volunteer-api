@@ -40,7 +40,7 @@ export class OrganizationsService {
   // ─── Створення організації ────────────────────────────────────────────────
 
   async create(
-    dto: { name: string; description?: string; parentOrgId?: string },
+    dto: { name: string; description?: string; parentOrgId?: string; tags?: string[] },
     creator: User,
   ): Promise<Organization> {
     if (dto.parentOrgId) {
@@ -87,6 +87,7 @@ export class OrganizationsService {
     return this.orgRepo.find({
       where: [
         { name: Like(`%${query}%`) },
+        { tags: Like("%" + query + "%") },
         { description: Like(`%${query}%`) },
       ],
       relations: ['settings'],

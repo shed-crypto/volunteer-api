@@ -74,4 +74,8 @@ export class Organization extends BaseEntity {
   /** Чи публічна організація (видима в пошуку) */
   @Column({ name: 'is_public', type: 'boolean', default: true })
   isPublic: boolean;
+
+  /** Теги (напрями діяльності), наприклад ["#Медицина", "#Евакуація"] */
+  @Column({ type: 'simple-array', nullable: true, default: '' })
+  tags: string[];
 }
