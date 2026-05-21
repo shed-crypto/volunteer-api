@@ -81,8 +81,8 @@ class UpdateHubDto {
 class UpdateOrgDto {
   @ApiPropertyOptional() @IsOptional() @IsString() name?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() logoUrl?: string | null;
-  @ApiPropertyOptional() @IsOptional() @IsString() bannerUrl?: string | null;
+  @ApiPropertyOptional({ type: 'string', nullable: true }) @IsOptional() logoUrl?: string | null;
+  @ApiPropertyOptional({ type: 'string', nullable: true }) @IsOptional() bannerUrl?: string | null;
   @ApiPropertyOptional({ type: 'array', items: { type: 'string' }, description: 'Теги організації' })
   @IsOptional() @IsArray() @IsString({ each: true }) tags?: string[];
 }
