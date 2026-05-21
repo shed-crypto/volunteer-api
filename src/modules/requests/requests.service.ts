@@ -478,7 +478,7 @@ export class RequestsService {
           creator.avatar_url AS "creator_avatarUrl",
           creator.clearance_level AS "creator_clearanceLevel",
           creator.system_role AS "creator_systemRole",
-          creator.citizenship AS "creator_citizenship",
+          /* citizenship column not in DB, removed */
           ST_Distance(
             req.exact_location::geography,
             ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
@@ -591,14 +591,13 @@ export class RequestsService {
         req.created_at AS "createdAt",
         req.updated_at AS "updatedAt",
         req.deleted_at AS "deletedAt",
-        req."followerIds" AS "followerIds",
+        /* followerIds column not in DB, removed */
         creator.id AS "creator_id",
         creator.full_name AS "creator_fullName",
         creator.email AS "creator_email",
         creator.avatar_url AS "creator_avatarUrl",
         creator.clearance_level AS "creator_clearanceLevel",
-        creator.system_role AS "creator_systemRole",
-        creator.citizenship AS "creator_citizenship"
+        creator.system_role AS "creator_systemRole"
       FROM requests req
       LEFT JOIN users creator ON creator.id = req.creator_id AND creator.deleted_at IS NULL
       WHERE ${whereSQL}
