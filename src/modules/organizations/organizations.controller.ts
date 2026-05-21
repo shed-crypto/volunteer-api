@@ -11,7 +11,7 @@ import { existsSync, mkdirSync } from 'fs';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import {
   IsString, IsOptional, IsUUID, IsEnum,
-  IsNumber, Min, Max, MaxLength, IsBoolean,
+  IsNumber, Min, Max, MaxLength, IsBoolean, IsArray,
 } from 'class-validator';
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -50,6 +50,8 @@ class CreateOrgDto {
   @ApiProperty() @IsString() @MaxLength(255) name: string;
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional() @IsOptional() @IsUUID() parentOrgId?: string;
+  @ApiPropertyOptional({ type: 'array', items: { type: 'string' }, description: 'Теги організації' })
+  @IsOptional() @IsArray() @IsString({ each: true }) tags?: string[];
 }
 
 class AddMemberDto {
@@ -81,6 +83,8 @@ class UpdateOrgDto {
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() logoUrl?: string | null;
   @ApiPropertyOptional() @IsOptional() @IsString() bannerUrl?: string | null;
+  @ApiPropertyOptional({ type: 'array', items: { type: 'string' }, description: 'Теги організації' })
+  @IsOptional() @IsArray() @IsString({ each: true }) tags?: string[];
 }
 
 class UpdateOrgSettingsDto {
