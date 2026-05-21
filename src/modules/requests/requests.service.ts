@@ -18,6 +18,7 @@ import {
   AssignmentStatus,
   TaskOrigin,
   TaskStatus,
+  RequestCategory,
 } from '@common/enums';
 import { CreateRequestDto, AddInfoRequestDto } from './dto/create-request.dto';
 import { UpdateRequestDto } from './dto/update-request.dto';
@@ -36,6 +37,18 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
   '#Продовольство': ['їжа', 'продукти', 'харчування', 'вода'],
   '#Логістика': ['доставка', 'перевезення', 'транспорт'],
   '#Військо': ['армія', 'зсу', 'підрозділ', 'бойовий', 'фронт'],
+};
+
+/** Мапа категорії -> автотег, яка додається при створенні/оновленні заявки */
+const CATEGORY_TO_TAG: Record<RequestCategory, string | null> = {
+  [RequestCategory.MEDICAL]: '#Медицина',
+  [RequestCategory.EVACUATION]: '#Евакуація',
+  [RequestCategory.LOGISTICS]: '#Логістика',
+  [RequestCategory.MILITARY]: '#Військо',
+  [RequestCategory.HUMANITARIAN]: '#Гуманітарна',
+  [RequestCategory.SHELTER]: '#Житло',
+  [RequestCategory.PSYCHOLOGICAL]: '#Психологічна',
+  [RequestCategory.OTHER]: null,
 };
 
 const isActiveAssignmentStatus = (status: AssignmentStatus | string): boolean =>
@@ -57,7 +70,9 @@ export class RequestsService {
   // ─── Створення заявки ─────────────────────────────────────────────────────
 
   async create(dto: CreateRequestDto, creator: User): Promise<Request> {
-    const tags = this.autoCategorizeTags(dto.title + ' ' + (dto.description || ''));
+    const textTags = this.autoCategorizeTags(dto.title + ' ' + (dto.description || ''));
+    const categoryTag = dto.category ? CATEGORY_TO_TAG[dto.category] : null;
+    const tags = [...new Set([...textTags, ...(categoryTag ? [categoryTag] : [])])];
 
     const request = this.requestRepository.create({
       ...dto,
@@ -232,10 +247,13 @@ export class RequestsService {
 
     Object.assign(request, { ...dto, mediaUrls: request.mediaUrls });
 
-    if (dto.title || dto.description) {
-      request.tags = this.autoCategorizeTags(
+    if (dto.title || dto.description || dto.category) {
+      const textTags = this.autoCategorizeTags(
         (dto.title || request.title) + ' ' + (dto.description || request.description || ''),
       );
+      const effectiveCategory = dto.category || request.category;
+      const categoryTag = effectiveCategory ? CATEGORY_TO_TAG[effectiveCategory] : null;
+      request.tags = [...new Set([...textTags, ...(categoryTag ? [categoryTag] : [])])];
     }
 
     const saved = await this.requestRepository.save(request);
