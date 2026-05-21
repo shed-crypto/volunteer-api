@@ -31,7 +31,7 @@ function autoCategorize(
   const combined = `${title} ${description}`.toLowerCase();
 
   const rules: Array<{ keywords: string[]; category: string }> = [
-    { keywords: ['медик', 'лік', 'аптеч', 'шпитал', 'госпітал', 'поранен', 'травм', 'medical', 'hospital', 'wounded'], category: 'MEDICAL' },
+    { keywords: ['медик', 'медичн', 'лік', 'аптеч', 'шпитал', 'госпітал', 'поранен', 'травм', 'medical', 'hospital', 'wounded'], category: 'MEDICAL' },
     { keywords: ['евакуац', 'евакуюв', 'перевезен', 'транспорт', 'авто', 'машин', 'evacuat', 'transport'], category: 'EVACUATION' },
     { keywords: ['логіст', 'достав', 'перевоз', 'склад', 'logistic', 'delivery', 'warehouse'], category: 'LOGISTICS' },
     { keywords: ['військ', 'збро', 'боєприп', 'фронт', 'передов', 'military', 'frontline', 'weapon'], category: 'MILITARY' },
