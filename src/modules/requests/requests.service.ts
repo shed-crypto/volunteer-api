@@ -471,7 +471,7 @@ export class RequestsService {
           req.created_at AS "createdAt",
           req.updated_at AS "updatedAt",
           req.deleted_at AS "deletedAt",
-          req."followerIds" AS "followerIds",
+          /* followerIds column not in DB, removed */
           creator.id AS "creator_id",
           creator.full_name AS "creator_fullName",
           creator.email AS "creator_email",
