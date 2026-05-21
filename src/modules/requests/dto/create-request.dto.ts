@@ -1,7 +1,7 @@
 import {
   IsString, IsOptional, IsEnum, IsBoolean,
   IsNumber, IsUrl, Min, Max, IsDateString,
-  MinLength, MaxLength, IsUUID,
+  MinLength, MaxLength, IsUUID, IsArray,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
@@ -82,6 +82,17 @@ export class CreateRequestDto {
   @ApiPropertyOptional({ type: 'array', items: { type: 'object' } })
   @IsOptional()
   mediaUrls?: Array<{ url: string; name: string; type: string }>;
+
+  @ApiPropertyOptional({
+    type: 'array',
+    items: { type: 'string' },
+    description: 'Теги заявки для категоризації',
+    example: ['medical', 'evacuation'],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
 }
 
 export class AddInfoRequestDto {
