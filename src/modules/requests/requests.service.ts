@@ -708,6 +708,32 @@ export class RequestsService {
       throw new ForbiddenException('Тільки власник або адмін може повернути в роботу');
     }
 
+    // Якщо заявка скасована — дозволити повернути лише протягом 10 хвилин
+    if (request.status === RequestStatus.CANCELLED) {
+      const cancelledAt = request.cancelledAt;
+      if (!cancelledAt) {
+        throw new ForbiddenException('Неможливо визначити час скасування заявки');
+      }
+
+      const now = Date.now();
+      const cancelledTime = cancelledAt.getTime();
+      const diffMs = now - cancelledTime;
+      const tenMinutes = 10 * 60 * 1000;
+
+      if (diffMs > tenMinutes) {
+        throw new ForbiddenException('Час для відміни скасування вичерпано. Можливо повернути лише протягом 10 хвилин після скасування.');
+      }
+
+      // Очищуємо дані скасування і повертаємо в активний статус
+      request.status = RequestStatus.IN_PROGRESS;
+      request.cancelReason = null;
+      request.cancelledAt = null;
+      request.cancelledByUserId = null;
+
+      return this.requestRepository.save(request);
+    }
+
+    // Для інших статусів (напр. PENDING_REVIEW) — стандартна логіка
     request.status = RequestStatus.IN_PROGRESS;
     return this.requestRepository.save(request);
   }
