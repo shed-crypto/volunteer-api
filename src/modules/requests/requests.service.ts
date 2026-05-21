@@ -585,7 +585,7 @@ export class RequestsService {
         req.tags,
         req.additional_info AS "additionalInfo",
         req.media_urls AS "mediaUrls",
-        req.report_urls AS "reportUrls",
+        req."reportUrls" AS "reportUrls",
         req.deadline,
         req.fundraising_url AS "fundraisingUrl",
         req.created_at AS "createdAt",
