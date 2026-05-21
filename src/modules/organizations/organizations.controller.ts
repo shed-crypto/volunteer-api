@@ -231,7 +231,7 @@ export class OrganizationsController {
   @Patch(':id/hubs/:hubId')
   @UseGuards(OrganizationRoleGuard)
   @Roles(OrgRole.LEADER, OrgRole.COORDINATOR)
-  @ApiOperation({ summary: 'Р РµРґР°РіСѓРІР°С‚Рё СЃРєР»Р°Рґ/С…Р°Р±' })
+  @ApiOperation({ summary: 'Редагувати склад/хаб' })
   updateHub(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('hubId', ParseUUIDPipe) hubId: string,

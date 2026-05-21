@@ -687,17 +687,17 @@ export class RequestsService {
 
   async cancel(id: string, reason: string | undefined, user: User): Promise<Request> {
     const request = await this.requestRepository.findOne({ where: { id } });
-    if (!request) throw new NotFoundException(`Р—Р°СЏРІРєСѓ ${id} РЅРµ Р·РЅР°Р№РґРµРЅРѕ`);
+    if (!request) throw new NotFoundException(`Заявку ${id} не знайдено`);
 
     const isOwner = request.creatorId === user.id;
     const isAdmin = user.systemRole === SystemRole.ADMIN;
     const isCoordinator = user.systemRole === SystemRole.COORDINATOR;
     if (!isOwner && !isAdmin && !isCoordinator) {
-      throw new ForbiddenException('РќРµРјР°С” РїСЂР°РІ РґР»СЏ СЃРєР°СЃСѓРІР°РЅРЅСЏ С†С–С”С— Р·Р°СЏРІРєРё');
+      throw new ForbiddenException('Немає прав для скасування цієї заявки');
     }
 
     if (request.status === RequestStatus.COMPLETED) {
-      throw new ForbiddenException('Р—Р°РІРµСЂС€РµРЅСѓ Р·Р°СЏРІРєСѓ РЅРµ РјРѕР¶РЅР° СЃРєР°СЃСѓРІР°С‚Рё');
+      throw new ForbiddenException('Завершену заявку не можна скасувати');
     }
 
     request.status = RequestStatus.CANCELLED;
