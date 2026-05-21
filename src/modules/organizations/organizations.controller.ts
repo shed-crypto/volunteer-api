@@ -100,6 +100,17 @@ class UpdateOrgSettingsDto {
 export class OrganizationsController {
   constructor(private readonly orgsService: OrganizationsService) {}
 
+  private availableTags = [
+    '#Медицина', '#Евакуація', '#Логістика', '#Військо',
+    '#Гуманітарна', '#Житло', '#Психологічна', '#Термінова',
+  ];
+
+  @Get('tags')
+  @ApiOperation({ summary: 'Доступні теги організацій' })
+  getAvailableTags(): string[] {
+    return this.availableTags;
+  }
+
   @Post()
   @ApiOperation({ summary: 'Створити організацію або підгрупу' })
   create(
