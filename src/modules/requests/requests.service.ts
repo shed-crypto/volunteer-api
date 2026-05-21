@@ -181,7 +181,7 @@ export class RequestsService {
 
     return requests.map((r) => {
       const obfuscated = this.obfuscateLocation(r, requester);
-      return { ...obfuscated, isSaved: savedRequestIds.has(r.id) };
+      return { ...obfuscated, isSaved: savedRequestIds.has(r.id), taskCount: r.tasks?.length ?? 0 };
     });
   }
 
