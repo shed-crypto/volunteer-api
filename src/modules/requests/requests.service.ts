@@ -72,7 +72,8 @@ export class RequestsService {
   async create(dto: CreateRequestDto, creator: User): Promise<Request> {
     const textTags = this.autoCategorizeTags(dto.title + ' ' + (dto.description || ''));
     const categoryTag = dto.category ? CATEGORY_TO_TAG[dto.category] : null;
-    const tags = [...new Set([...textTags, ...(categoryTag ? [categoryTag] : [])])];
+    const autoTags = [...new Set([...textTags, ...(categoryTag ? [categoryTag] : [])])];
+    const tags = dto.tags?.length ? [...new Set([...autoTags, ...dto.tags])] : autoTags;
 
     const request = this.requestRepository.create({
       ...dto,
@@ -253,7 +254,7 @@ export class RequestsService {
       );
       const effectiveCategory = dto.category || request.category;
       const categoryTag = effectiveCategory ? CATEGORY_TO_TAG[effectiveCategory] : null;
-      request.tags = [...new Set([...textTags, ...(categoryTag ? [categoryTag] : [])])];
+      request.tags = [...new Set([...textTags, ...(categoryTag ? [categoryTag] : []), ...(dto.tags ?? [])])];
     }
 
     const saved = await this.requestRepository.save(request);
