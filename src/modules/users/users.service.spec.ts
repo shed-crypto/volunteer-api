@@ -177,3 +177,225 @@ describe('UsersService — vouchForUser (6.5)', () => {
     );
   });
 });
+
+// =====================================================================
+// Етап 3 — 10 тестів для адмін-методів UsersService
+// =====================================================================
+
+describe('UsersService — admin methods', () => {
+  let service: UsersService;
+  let mockUserRepo: any;
+  let mockVouchRepo: any;
+  let mockVehicleRepo: any;
+
+  const createAdmin = (): User =>
+    ({
+      id: 'admin-id',
+      email: 'admin@test.com',
+      fullName: 'Admin',
+      passwordHash: 'hash',
+      systemRole: SystemRole.ADMIN,
+      clearanceLevel: ClearanceLevel.FRONTLINE,
+      trustScore: 100,
+      isBlocked: false,
+      isEmailVerified: true,
+      isIdentityVerified: true,
+      phoneNumber: '+380501234567',
+      avatarUrl: 'http://example.com/avatar.jpg',
+      refreshTokenHash: null,
+      emailVerificationToken: null,
+      passwordResetCode: null,
+      passwordResetToken: null,
+      passwordResetExpires: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      vehicles: [],
+      givenVouches: [],
+      receivedVouches: [],
+      organizationMemberships: [],
+      taskAssignments: [],
+    } as User);
+
+  const createNonAdmin = (): User =>
+    ({
+      ...createAdmin(),
+      id: 'user-id',
+      systemRole: SystemRole.VOLUNTEER,
+    } as User);
+
+  const createTargetUser = (): User =>
+    ({
+      ...createAdmin(),
+      id: 'target-id',
+    } as User);
+
+  beforeEach(async () => {
+    mockUserRepo = {
+      findOne: jest.fn().mockResolvedValue(createTargetUser()),
+      update: jest.fn().mockResolvedValue({}),
+      save: jest.fn(),
+      manager: { find: jest.fn().mockResolvedValue([]) },
+    };
+
+    mockVouchRepo = {
+      findOne: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
+      save: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
+      find: jest.fn().mockResolvedValue([]),
+    };
+
+    mockVehicleRepo = {};
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        UsersService,
+        { provide: getRepositoryToken(User), useValue: mockUserRepo },
+        { provide: getRepositoryToken(TrustVouch), useValue: mockVouchRepo },
+        { provide: getRepositoryToken(Vehicle), useValue: mockVehicleRepo },
+      ],
+    }).compile();
+
+    service = module.get<UsersService>(UsersService);
+  });
+
+  // ------------------------------------------------------
+  // 3.1 — blockUser: адмін блокує користувача
+  // ------------------------------------------------------
+  it('3.1 — blockUser: адмін блокує користувача та призупиняє vouches', async () => {
+    await service.blockUser('target-id', createAdmin() as User);
+
+    expect(mockUserRepo.update).toHaveBeenCalledWith('target-id', {
+      isBlocked: true,
+    });
+    expect(mockVouchRepo.update).toHaveBeenCalledWith(
+      { voucherId: 'target-id', isSuspended: false },
+      {
+        isSuspended: true,
+        suspendedAt: expect.any(Date),
+        suspensionReason: 'voucher banned by admin',
+      },
+    );
+  });
+
+  // ------------------------------------------------------
+  // 3.2 — blockUser: не-адмін ВІДХИЛЯЄТЬСЯ
+  // ------------------------------------------------------
+  it('3.2 — blockUser: не-адмін не може заблокувати користувача', async () => {
+    await expect(
+      service.blockUser('target-id', createNonAdmin() as User),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  // ------------------------------------------------------
+  // 3.3 — unblockUser: адмін розблоковує користувача
+  // ------------------------------------------------------
+  it('3.3 — unblockUser: адмін розблоковує користувача (не відновлює vouches)', async () => {
+    await service.unblockUser('target-id', createAdmin() as User);
+
+    expect(mockUserRepo.update).toHaveBeenCalledWith('target-id', {
+      isBlocked: false,
+    });
+    // vouches НЕ відновлюються автоматично
+  });
+
+  // ------------------------------------------------------
+  // 3.4 — unblockUser: не-адмін ВІДХИЛЯЄТЬСЯ
+  // ------------------------------------------------------
+  it('3.4 — unblockUser: не-адмін не може розблокувати користувача', async () => {
+    await expect(
+      service.unblockUser('target-id', createNonAdmin() as User),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  // ------------------------------------------------------
+  // 3.5 — changeRole: адмін змінює роль
+  // ------------------------------------------------------
+  it('3.5 — changeRole: адмін підвищує Volunteer → Coordinator', async () => {
+    mockUserRepo.findOne
+      .mockResolvedValueOnce(createTargetUser()) // шукаємо target
+      .mockResolvedValueOnce({ ...createTargetUser(), systemRole: SystemRole.COORDINATOR }); // findById
+
+    const result = await service.changeRole('target-id', SystemRole.COORDINATOR, createAdmin() as User);
+
+    expect(mockUserRepo.update).toHaveBeenCalledWith('target-id', {
+      systemRole: SystemRole.COORDINATOR,
+    });
+    expect(result.systemRole).toBe(SystemRole.COORDINATOR);
+  });
+
+  // ------------------------------------------------------
+  // 3.6 — changeRole: не-адмін ВІДХИЛЯЄТЬСЯ
+  // ------------------------------------------------------
+  it('3.6 — changeRole: не-адмін не може змінити роль', async () => {
+    await expect(
+      service.changeRole('target-id', SystemRole.COORDINATOR, createNonAdmin() as User),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  // ------------------------------------------------------
+  // 3.7 — updateClearance: адмін змінює рівень допуску
+  // ------------------------------------------------------
+  it('3.7 — updateClearance: адмін встановлює FRONTLINE → frontlineGrantedByAdmin=true', async () => {
+    mockUserRepo.findOne
+      .mockResolvedValueOnce(createTargetUser())
+      .mockResolvedValueOnce({ ...createTargetUser(), clearanceLevel: ClearanceLevel.FRONTLINE, frontlineGrantedByAdmin: true });
+
+    const result = await service.updateClearance('target-id', ClearanceLevel.FRONTLINE, createAdmin() as User);
+
+    expect(mockUserRepo.update).toHaveBeenCalledWith('target-id', {
+      clearanceLevel: ClearanceLevel.FRONTLINE,
+      frontlineGrantedByAdmin: true,
+    });
+    expect(result.clearanceLevel).toBe(ClearanceLevel.FRONTLINE);
+  });
+
+  // ------------------------------------------------------
+  // 3.8 — updateClearance: не-адмін ВІДХИЛЯЄТЬСЯ
+  // ------------------------------------------------------
+  it('3.8 — updateClearance: не-адмін не може змінити рівень допуску', async () => {
+    await expect(
+      service.updateClearance('target-id', ClearanceLevel.FRONTLINE, createNonAdmin() as User),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  // ------------------------------------------------------
+  // 3.9 — recalculateClearance: без vouches → LOCAL
+  // ------------------------------------------------------
+  it('3.9 — recalculateClearance: 0 поручителів → залишає LOCAL', async () => {
+    mockVouchRepo.count.mockResolvedValue(0);
+    mockUserRepo.findOne.mockResolvedValue({
+      ...createTargetUser(),
+      clearanceLevel: ClearanceLevel.INTERNATIONAL,
+      trustScore: 10,
+      frontlineGrantedByAdmin: false,
+    });
+
+    await service.recalculateClearance('target-id');
+
+    expect(mockUserRepo.update).toHaveBeenCalledWith('target-id', {
+      clearanceLevel: ClearanceLevel.LOCAL,
+      trustScore: 10, // trustScore не змінюється без підвищення
+    });
+  });
+
+  // ------------------------------------------------------
+  // 3.10 — recalculateClearance: 3+ vouches → INTERNATIONAL
+  // ------------------------------------------------------
+  it('3.10 — recalculateClearance: 3 поручителя → підвищує до INTERNATIONAL +5 trust', async () => {
+    mockVouchRepo.count.mockResolvedValue(3);
+    mockUserRepo.findOne.mockResolvedValue({
+      ...createTargetUser(),
+      clearanceLevel: ClearanceLevel.LOCAL,
+      trustScore: 5,
+      frontlineGrantedByAdmin: false,
+    });
+
+    await service.recalculateClearance('target-id');
+
+    expect(mockUserRepo.update).toHaveBeenCalledWith('target-id', {
+      clearanceLevel: ClearanceLevel.INTERNATIONAL,
+      trustScore: 10, // 5 + 5
+    });
+  });
+});
