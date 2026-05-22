@@ -117,7 +117,6 @@ export class RequestsService {
     const qb = this.requestRepository
       .createQueryBuilder('request')
       .leftJoinAndSelect('request.creator', 'creator')
-      .leftJoinAndSelect('request.tasks', 'tasks')
       .where('request.deleted_at IS NULL');
 
     if (dto.status)    qb.andWhere('request.status = :status',     { status: dto.status });
@@ -172,6 +171,22 @@ export class RequestsService {
     qb.limit(dto.limit || 50).offset(dto.offset || 0);
 
     const requests = await qb.getMany();
+    const requestIds = requests.map(r => r.id);
+
+    // Підраховуємо кількість задач для кожної заявки ОДНИМ запитом
+    const taskCounts: Map<string, number> = new Map();
+    if (requestIds.length > 0) {
+      const counts = await this.taskRepository
+        .createQueryBuilder('task')
+        .select('task.request_id', 'requestId')
+        .addSelect('COUNT(*)', 'count')
+        .where('task.request_id IN (:...ids)', { ids: requestIds })
+        .groupBy('task.request_id')
+        .getRawMany();
+      for (const row of counts) {
+        taskCounts.set(row.requestId, parseInt(row.count, 10));
+      }
+    }
 
     const savedRequestIds = new Set(
       (await this.savedRequestRepository.find({
@@ -182,7 +197,8 @@ export class RequestsService {
 
     return requests.map((r) => {
       const obfuscated = this.obfuscateLocation(r, requester);
-      return { ...obfuscated, isSaved: savedRequestIds.has(r.id), taskCount: r.tasks?.length ?? 0 };
+      const taskCount = taskCounts.get(r.id) ?? 0;
+      return { ...obfuscated, isSaved: savedRequestIds.has(r.id), taskCount };
     });
   }
 
