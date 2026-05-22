@@ -210,6 +210,16 @@ export class TasksController {
     return this.tasksService.acceptDelegation(id, organizationId, user);
   }
 
+  @Post('tasks/:id/delegation/unaccept')
+  @ApiOperation({ summary: 'Скасувати прийняття делегації' })
+  unacceptDelegation(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body('organizationId', ParseUUIDPipe) organizationId: string,
+    @CurrentUser() user: User,
+  ): Promise<TaskDelegation> {
+    return this.tasksService.unacceptDelegation(id, organizationId, user);
+  }
+
   @Post('tasks/:id/delegation/decline')
   @ApiOperation({ summary: 'Відхилити делегацію підзадачі організацією' })
   declineDelegation(

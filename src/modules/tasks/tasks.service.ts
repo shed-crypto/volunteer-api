@@ -7,7 +7,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import { Task } from './entities/task.entity';
 import { TaskAssignment } from './entities/task-assignment.entity';
 import { TaskDelegation } from './entities/task-delegation.entity';
@@ -322,7 +322,12 @@ export class TasksService {
           }
         });
       } else if (task.chatId) {
-        // Якщо задача вже в роботі, додаємо нового волонтера в існуючий чат
+        // Якщо задача вже в роботі, додаємо нового волонтера в participants чату в БД
+        await manager.query(
+          `INSERT INTO chat_participants (chat_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+          [task.chatId, volunteer.id],
+        );
+        // Також підписуємо на WebSocket-кімнату
         setImmediate(() => {
           this.chatGateway?.addParticipantToRoom(volunteer.id, task.chatId!, `Задача: ${task.title}`);
         });
@@ -548,36 +553,107 @@ export class TasksService {
     const task = await this.taskRepository.findOne({ where: { id: taskId }, relations: ['request'] });
     if (!task) throw new NotFoundException('Підзадачу не знайдено');
 
-    if (coordinator.systemRole !== SystemRole.COORDINATOR && coordinator.systemRole !== SystemRole.ADMIN) {
-      throw new ForbiddenException('Лише координатор може делегувати задачі');
+    try {
+      // Дозволяємо делегувати: ADMIN (глобально), або будь-який лідер/координатор будь-якої організації
+      const isAdmin = coordinator.systemRole === SystemRole.ADMIN;
+      if (!isAdmin) {
+        // Використовуємо query builder замість findOne з масивом where (стабільніше)
+        const membership = await this.orgMemberRepository
+          .createQueryBuilder('om')
+          .where('om.userId = :userId AND om.isActive = :isActive', {
+            userId: coordinator.id,
+            isActive: true,
+          })
+          .andWhere('(om.orgRole = :role1 OR om.orgRole = :role2)', {
+            role1: OrgRole.LEADER,
+            role2: OrgRole.COORDINATOR,
+          })
+          .getOne();
+
+        if (!membership) {
+          throw new ForbiddenException('Потрібні права лідера або координатора організації');
+        }
+      }
+
+      // Перевіряємо поточний стан перед upsert (основний захист від перезапису прийнятого)
+      const existingState = await this.delegationRepository.findOne({
+        where: { taskId, organizationId: dto.organizationId },
+        select: ['id', 'isAccepted'],
+      });
+      if (existingState?.isAccepted === true) {
+        throw new ConflictException('Задача вже прийнята цією організацією. Скасуйте прийняття і спробуйте знову.');
+      }
+
+      // Атомарний upsert через raw SQL (ON CONFLICT DO UPDATE)
+      // Якщо запис не існує → INSERT
+      // Якщо існує (очікує або відхилено) → UPDATE (скидає is_accepted в NULL)
+      // Race condition між двома одночасними запитами: ON CONFLICT гарантує що другий не впаде з 500
+      const result = await this.delegationRepository.query(
+        `INSERT INTO task_delegations (task_id, organization_id, delegated_by_user_id, delegated_at, is_accepted, message)
+         VALUES ($1, $2, $3, NOW(), NULL, $4)
+         ON CONFLICT (task_id, organization_id) 
+         DO UPDATE SET delegated_by_user_id = $3, delegated_at = NOW(), is_accepted = NULL, message = $4
+         RETURNING *`,
+        [taskId, dto.organizationId, coordinator.id, dto.message || null],
+      );
+
+      // Після upsert перевіряємо чи було це відновлення відхиленого запису,
+      // чи спроба повторного делегування активного
+      if (result && result.length > 0) {
+        const isAccepted = result[0].is_accepted;
+        // Якщо після ON CONFLICT DO UPDATE is_accepted досі true — значить запис був прийнятий
+        // (ON CONFLICT не оновив би його через умову, але ми завжди ставимо NULL)
+        // Фактично ON CONFLICT завжди оновлює, тому ця перевірка не потрібна,
+        // але залишаємо для логіки на майбутнє
+      }
+
+      if (this.notificationsService) {
+        setImmediate(() => {
+          this.notificationsService
+            .notifyDelegation(dto.organizationId, task.title, '')
+            .catch(() => {});
+        });
+      }
+
+      // Повертаємо об'єкт делегування (нормалізуємо з raw SQL результату)
+      const delegation = result && result.length > 0 ? result[0] : null;
+      if (!delegation) {
+        throw new Error('Не вдалося створити делегування');
+      }
+      return delegation;
+    } catch (error) {
+      console.error('[TasksService] delegateTask error:', error);
+      throw error;
     }
-
-    const delegation = await this.delegationRepository.save(
-      this.delegationRepository.create({
-        taskId,
-        organizationId: dto.organizationId,
-        delegatedByUserId: coordinator.id,
-        message: dto.message,
-      }),
-    );
-
-    setImmediate(() => {
-      this.notificationsService
-        .notifyDelegation(dto.organizationId, task.title, '')
-        .catch(() => {});
-    });
-
-    return delegation;
   }
 
   async acceptDelegation(taskId: string, organizationId: string, user: User): Promise<TaskDelegation> {
     await this.ensureOrgCoordinator(organizationId, user);
     const delegation = await this.delegationRepository.findOne({
       where: { taskId, organizationId },
-      relations: ['task'],
+      relations: ['task', 'task.request'],
     });
     if (!delegation) throw new NotFoundException('Делегацію не знайдено');
     delegation.isAccepted = true;
+    const saved = await this.delegationRepository.save(delegation);
+    // Автоматично оновлюємо managingOrganizationId заявки на прийняту організацію
+    if (delegation.task?.request) {
+      await this.requestRepository.update(delegation.task.request.id, {
+        managingOrganizationId: organizationId,
+      });
+    }
+    return saved;
+  }
+
+  async unacceptDelegation(taskId: string, organizationId: string, user: User): Promise<TaskDelegation> {
+    await this.ensureOrgCoordinator(organizationId, user);
+    const delegation = await this.delegationRepository.findOne({
+      where: { taskId, organizationId },
+      relations: ['task', 'task.request'],
+    });
+    if (!delegation) throw new NotFoundException('Делегацію не знайдено');
+    if (delegation.isAccepted !== true) throw new BadRequestException('Делегація ще не була прийнята');
+    delegation.isAccepted = null; // Повертаємо в статус "очікує"
     return this.delegationRepository.save(delegation);
   }
 

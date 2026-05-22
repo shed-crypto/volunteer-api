@@ -170,6 +170,15 @@ export class OrganizationsController {
     return this.orgsService.getOrganizationRequests(id, user);
   }
 
+  @Get(':id/delegations')
+  @ApiOperation({ summary: 'Вхідні делегування для організації (очікують підтвердження)' })
+  getDelegations(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: User,
+  ) {
+    return this.orgsService.getIncomingDelegations(id, user);
+  }
+
   @Get(':id/members/me/privileges')
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Отримати мої права в організації' })

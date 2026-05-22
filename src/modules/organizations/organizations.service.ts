@@ -465,6 +465,17 @@ export class OrganizationsService {
     }
   }
 
+  // ─── Вхідні делегування ───────────────────────────────────────────────────
+
+  async getIncomingDelegations(orgId: string, user: User): Promise<TaskDelegation[]> {
+    await this.ensureMemberOrAdmin(orgId, user);
+    return this.taskDelegationRepo.find({
+      where: { organizationId: orgId },
+      relations: ['task', 'task.request', 'delegatedBy'],
+      order: { delegatedAt: 'DESC' },
+    });
+  }
+
   private async ensureMemberOrAdmin(orgId: string, user: User): Promise<void> {
     if (user.systemRole === SystemRole.ADMIN) return;
     const membership = await this.memberRepo.findOne({

@@ -525,6 +525,23 @@ export class RequestsService {
         LIMIT $3 OFFSET $4
       `;
       const results = await this.requestRepository.query(sql, [userLng, userLat, limit, offset]);
+
+      // Підраховуємо taskCount для отриманих заявок
+      const requestIds = results.map((r: any) => r.id);
+      const taskCounts: Map<string, number> = new Map();
+      if (requestIds.length > 0) {
+        const counts = await this.taskRepository
+          .createQueryBuilder('task')
+          .select('task.request_id', 'requestId')
+          .addSelect('COUNT(*)', 'count')
+          .where('task.request_id IN (:...ids)', { ids: requestIds })
+          .groupBy('task.request_id')
+          .getRawMany();
+        for (const row of counts) {
+          taskCounts.set(row.requestId, parseInt(row.count, 10));
+        }
+      }
+
       return results.map((r: any) => ({
         id: r.id,
         status: r.status,
@@ -561,6 +578,7 @@ export class RequestsService {
           citizenship: r.creator_citizenship,
         },
         distance: r.distance,
+        taskCount: taskCounts.get(r.id) ?? 0,
       }));
     }
 
@@ -643,6 +661,23 @@ export class RequestsService {
 
     try {
       const results = await this.requestRepository.query(sql, rawParams);
+
+      // Підраховуємо taskCount для отриманих заявок
+      const requestIds = results.map((r: any) => r.id);
+      const taskCounts: Map<string, number> = new Map();
+      if (requestIds.length > 0) {
+        const counts = await this.taskRepository
+          .createQueryBuilder('task')
+          .select('task.request_id', 'requestId')
+          .addSelect('COUNT(*)', 'count')
+          .where('task.request_id IN (:...ids)', { ids: requestIds })
+          .groupBy('task.request_id')
+          .getRawMany();
+        for (const row of counts) {
+          taskCounts.set(row.requestId, parseInt(row.count, 10));
+        }
+      }
+
       return results.map((r: any) => ({
         id: r.id,
         status: r.status,
@@ -678,6 +713,7 @@ export class RequestsService {
           systemRole: r.creator_systemRole,
           citizenship: r.creator_citizenship,
         },
+        taskCount: taskCounts.get(r.id) ?? 0,
       }));
     } catch (err) {
       console.error('[DEBUG getRequestsWithPriority] SQL error:', err);
