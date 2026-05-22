@@ -282,3 +282,281 @@ describe('TasksService — assignVolunteer (3.4)', () => {
     expect(result.status).toBe(AssignmentStatus.ASSIGNED);
   });
 });
+
+// =====================================================================
+// Етап 2 — 8 тестів для інших методів TasksService
+// =====================================================================
+
+describe('TasksService — life cycle methods', () => {
+  let service: TasksService;
+  let mockTaskRepo: any;
+  let mockAssignmentRepo: any;
+  let mockVouchRepo: any;
+  let mockDataSource: any;
+
+  const createTask = (overrides: Partial<Task> = {}): Task =>
+    ({
+      id: 'task-1',
+      title: 'Test Task',
+      requestId: 'req-1',
+      request: { id: 'req-1', creatorId: 'creator-id', status: RequestStatus.OPEN } as Request,
+      status: TaskStatus.TODO,
+      neededPeopleCount: 2,
+      chatId: null,
+      priority: 1,
+      assignments: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...overrides,
+    } as Task);
+
+  const createUser = (overrides: Partial<User> = {}): User =>
+    ({
+      id: 'vol-1',
+      email: 'vol@test.com',
+      fullName: 'Volunteer',
+      passwordHash: 'hash',
+      systemRole: SystemRole.VOLUNTEER,
+      clearanceLevel: ClearanceLevel.FRONTLINE,
+      trustScore: 10,
+      isBlocked: false,
+      isEmailVerified: true,
+      isIdentityVerified: true,
+      phoneNumber: '+380501234567',
+      avatarUrl: 'http://example.com/avatar.jpg',
+      refreshTokenHash: null,
+      emailVerificationToken: null,
+      passwordResetCode: null,
+      passwordResetToken: null,
+      passwordResetExpires: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      vehicles: [],
+      givenVouches: [],
+      receivedVouches: [],
+      organizationMemberships: [],
+      taskAssignments: [],
+      ...overrides,
+    } as User);
+
+  beforeEach(async () => {
+    mockTaskRepo = {
+      findOne: jest.fn(),
+      find: jest.fn(),
+      count: jest.fn(),
+      save: jest.fn(),
+      update: jest.fn(),
+      create: jest.fn(),
+      createQueryBuilder: jest.fn(),
+    };
+
+    mockAssignmentRepo = {
+      findOne: jest.fn(),
+      find: jest.fn(),
+      count: jest.fn(),
+      save: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
+      create: jest.fn(),
+    };
+
+    mockVouchRepo = { count: jest.fn() };
+
+    const mockRequestRepo = { findOne: jest.fn() };
+    const mockChatRepo = { save: jest.fn(), create: jest.fn() };
+    const mockDelegationRepo = {};
+    const mockOrgMemberRepo = {};
+
+    mockDataSource = {
+      transaction: jest.fn((cb: (manager: any) => Promise<any>) => cb({
+        findOne: jest.fn(),
+        find: jest.fn(),
+        count: jest.fn(),
+        save: jest.fn(),
+        update: jest.fn(),
+        create: jest.fn(),
+      })),
+      createQueryBuilder: jest.fn(() => ({
+        update: jest.fn().mockReturnThis(),
+        set: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({}),
+      })),
+    };
+
+    const mockNotificationsService = {
+      notifyVolunteerAssigned: jest.fn().mockResolvedValue(undefined),
+      notifyRequesterTeamFound: jest.fn().mockResolvedValue(undefined),
+    };
+
+    const mockChatGateway = {
+      addParticipantToRoom: jest.fn(),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        TasksService,
+        { provide: getRepositoryToken(Task), useValue: mockTaskRepo },
+        { provide: getRepositoryToken(TaskAssignment), useValue: mockAssignmentRepo },
+        { provide: getRepositoryToken(TaskDelegation), useValue: mockDelegationRepo },
+        { provide: getRepositoryToken(TrustVouch), useValue: mockVouchRepo },
+        { provide: getRepositoryToken(Request), useValue: mockRequestRepo },
+        { provide: getRepositoryToken(Chat), useValue: mockChatRepo },
+        { provide: getRepositoryToken(OrganizationMember), useValue: mockOrgMemberRepo },
+        { provide: DataSource, useValue: mockDataSource },
+        { provide: NotificationsService, useValue: mockNotificationsService },
+        { provide: ChatGateway, useValue: mockChatGateway },
+      ],
+    }).compile();
+
+    service = module.get<TasksService>(TasksService);
+  });
+
+  // ------------------------------------------------------
+  // 2.1 — withdrawAssignment: успішне відкликання
+  // ------------------------------------------------------
+  it('2.1 — withdrawAssignment: змінює статус на WITHDRAWN', async () => {
+    const assignment = {
+      id: 'assgn-1',
+      taskId: 'task-1',
+      userId: 'vol-1',
+      status: AssignmentStatus.ASSIGNED,
+    };
+    mockAssignmentRepo.findOne.mockResolvedValue(assignment);
+    mockAssignmentRepo.count.mockResolvedValue(1); // ще є активні
+
+    await service.withdrawAssignment('task-1', createUser() as User);
+
+    expect(mockAssignmentRepo.update).toHaveBeenCalledWith('assgn-1', {
+      status: AssignmentStatus.WITHDRAWN,
+    });
+  });
+
+  // ------------------------------------------------------
+  // 2.2 — withdrawAssignment: відхилення COMPLETED
+  // ------------------------------------------------------
+  it('2.2 — withdrawAssignment: забороняє відмову від COMPLETED', async () => {
+    const assignment = {
+      id: 'assgn-2',
+      taskId: 'task-1',
+      userId: 'vol-1',
+      status: AssignmentStatus.COMPLETED,
+    };
+    mockAssignmentRepo.findOne.mockResolvedValue(assignment);
+
+    await expect(service.withdrawAssignment('task-1', createUser() as User))
+      .rejects.toThrow('завершеного');
+  });
+
+  // ------------------------------------------------------
+  // 2.3 — completeTask: переводить у PENDING_REVIEW
+  // ------------------------------------------------------
+  it('2.3 — completeTask: виконавець переводить задачу в PENDING_REVIEW', async () => {
+    const task = createTask({
+      status: TaskStatus.IN_PROGRESS,
+      assignments: [
+        { userId: 'vol-1', status: AssignmentStatus.ASSIGNED } as any,
+      ],
+    });
+    mockTaskRepo.findOne.mockResolvedValue(task);
+    mockTaskRepo.save.mockResolvedValue({ ...task, status: TaskStatus.PENDING_REVIEW });
+
+    const result = await service.completeTask('task-1', createUser() as User);
+
+    expect(result.status).toBe(TaskStatus.PENDING_REVIEW);
+  });
+
+  // ------------------------------------------------------
+  // 2.4 — confirmTaskCompletion: автор заявки підтверджує
+  // ------------------------------------------------------
+  it('2.4 — confirmTaskCompletion: автор підтверджує → DONE', async () => {
+    const task = createTask({
+      status: TaskStatus.PENDING_REVIEW,
+      request: { id: 'req-1', creatorId: 'creator-id' } as any,
+      assignments: [
+        { userId: 'vol-1', status: AssignmentStatus.ASSIGNED, completedAt: null } as any,
+      ],
+    });
+    mockTaskRepo.findOne.mockResolvedValue(task);
+    mockTaskRepo.save.mockResolvedValue({ ...task, status: TaskStatus.DONE });
+    mockAssignmentRepo.update.mockResolvedValue({});
+
+    const requester = createUser({ id: 'creator-id' });
+    const result = await service.confirmTaskCompletion('task-1', requester as User);
+
+    expect(result.status).toBe(TaskStatus.DONE);
+  });
+
+  // ------------------------------------------------------
+  // 2.5 — confirmTaskCompletion: не-автор ВІДХИЛЯЄТЬСЯ
+  // ------------------------------------------------------
+  it('2.5 — confirmTaskCompletion: не-власник заявки не може підтвердити', async () => {
+    const task = createTask({
+      status: TaskStatus.PENDING_REVIEW,
+      request: { id: 'req-1', creatorId: 'another-user' } as any,
+      assignments: [
+        { userId: 'vol-1', status: AssignmentStatus.ASSIGNED } as any,
+      ],
+    });
+    mockTaskRepo.findOne.mockResolvedValue(task);
+
+    const nonOwner = createUser({ id: 'random-user' });
+    await expect(
+      service.confirmTaskCompletion('task-1', nonOwner as User),
+    ).rejects.toThrow('автор');
+  });
+
+  // ------------------------------------------------------
+  // 2.6 — rejectTask: автор відхиляє виконання
+  // ------------------------------------------------------
+  it('2.6 — rejectTask: автор відхиляє → IN_PROGRESS', async () => {
+    const task = createTask({
+      status: TaskStatus.PENDING_REVIEW,
+      request: { id: 'req-1', creatorId: 'creator-id' } as any,
+      assignments: [
+        { userId: 'vol-1', status: AssignmentStatus.COMPLETED } as any,
+      ],
+    });
+    mockTaskRepo.findOne.mockResolvedValue(task);
+    mockTaskRepo.save.mockResolvedValue({ ...task, status: TaskStatus.IN_PROGRESS });
+    mockAssignmentRepo.update.mockResolvedValue({});
+
+    const requester = createUser({ id: 'creator-id' });
+    const result = await service.rejectTask('task-1', requester as User, 'Неякісна робота');
+
+    expect(result.status).toBe(TaskStatus.IN_PROGRESS);
+  });
+
+  // ------------------------------------------------------
+  // 2.7 — cancelTask: адмін скасовує задачу
+  // ------------------------------------------------------
+  it('2.7 — cancelTask: адмін скасовує → CANCELLED', async () => {
+    const task = createTask({
+      status: TaskStatus.TODO,
+      request: { id: 'req-1', creatorId: 'creator-id' } as any,
+    });
+    mockTaskRepo.findOne.mockResolvedValue(task);
+    mockTaskRepo.save.mockResolvedValue({ ...task, status: TaskStatus.CANCELLED });
+
+    const admin = createUser({ id: 'admin-id', systemRole: SystemRole.ADMIN });
+    const result = await service.cancelTask('task-1', admin as User);
+
+    expect(result.status).toBe(TaskStatus.CANCELLED);
+  });
+
+  // ------------------------------------------------------
+  // 2.8 — renewTask: відновлення скасованої задачі
+  // ------------------------------------------------------
+  it('2.8 — renewTask: адмін відновлює CANCELLED → TODO', async () => {
+    const task = createTask({
+      status: TaskStatus.CANCELLED,
+      request: { id: 'req-1', creatorId: 'creator-id' } as any,
+    });
+    mockTaskRepo.findOne.mockResolvedValue(task);
+    mockTaskRepo.save.mockResolvedValue({ ...task, status: TaskStatus.TODO });
+
+    const admin = createUser({ id: 'admin-id', systemRole: SystemRole.ADMIN });
+    const result = await service.renewTask('task-1', admin as User);
+
+    expect(result.status).toBe(TaskStatus.TODO);
+  });
+});
