@@ -232,14 +232,12 @@ export class TasksService {
         );
       }
 
-      // Крок 2: перевірка допуску
-      this.checkClearanceAccess(request.requiredClearance, volunteer);
-
-      // Крок 3: Frontline — перевірка поручителів
+      // Крок 2: перевірка допуску (з урахуванням поручителів для FRONTLINE)
       if (request.requiredClearance === ClearanceLevel.FRONTLINE) {
-        // Якщо користувач вже має рівень FRONTLINE (призначений адміном або вже підтверджений),
+        // Якщо користувач вже має рівень FRONTLINE (призначений адміном),
         // пропускаємо перевірку поручителів.
         if (volunteer.clearanceLevel !== ClearanceLevel.FRONTLINE) {
+          // INTERNATIONAL/LOCAL можуть взяти FRONTLINE-задачу через поручителів
           const vouchCount = await manager.count(TrustVouch, {
             where: { voucheeId: volunteer.id },
           });
@@ -249,7 +247,10 @@ export class TasksService {
               `У вас: ${vouchCount}.`,
             );
           }
+          // Має достатньо поручителів — пропускаємо checkClearanceAccess
         }
+      } else {
+        this.checkClearanceAccess(request.requiredClearance, volunteer);
       }
 
       const activeAssignments = assignments.filter(

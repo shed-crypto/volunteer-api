@@ -9,4 +9,5 @@ uploads/
 .DS_Store
 *.log
 dist/
+coverage/
 .ai_notes.md

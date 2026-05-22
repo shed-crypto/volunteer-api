@@ -24,11 +24,20 @@ import { CreateRequestDto, AddInfoRequestDto } from './dto/create-request.dto';
 import { UpdateRequestDto } from './dto/update-request.dto';
 import { FindRequestsDto } from './dto/find-requests.dto';
 
-/** Радіус обфускування координат у метрах (з env або 3 км за замовчуванням) */
-const OBFUSCATION_RADIUS_M = parseInt(
-  process.env.LOCATION_OBFUSCATION_RADIUS_M || '3000',
-  10,
-);
+  /** Радіус обфускування координат у метрах (з env або 3 км за замовчуванням) */
+  const OBFUSCATION_RADIUS_M = parseInt(
+    process.env.LOCATION_OBFUSCATION_RADIUS_M || '3000',
+    10,
+  );
+
+// Проста хеш-функція djb2 для створення детермінованого зерна з UUID
+function getSeed(str: string): number {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 33) ^ str.charCodeAt(i);
+  }
+  return hash & 0x7fffffff;
+}
 
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   '#Медицина': ['медик', 'лікар', 'аптека', 'ліки', 'перев\'язка', 'медична'],
@@ -846,9 +855,10 @@ export class RequestsService {
 
     if (!request.latitude || !request.longitude) return request;
 
-    // Додаємо випадкове зміщення в межах OBFUSCATION_RADIUS_M
-    const angle = Math.random() * 2 * Math.PI;
-    const offsetMeters = Math.random() * OBFUSCATION_RADIUS_M;
+    // Детермінований зсув, обчислений з UUID заявки
+    // для консистентності: той самий запит завжди повертає однакові координати
+    const angle = (getSeed(request.id + 'angle') / 0x7fffffff) * 2 * Math.PI;
+    const offsetMeters = (getSeed(request.id + 'offset') / 0x7fffffff) * OBFUSCATION_RADIUS_M;
     const earthRadius = 6371000;
 
     const latOffset = (offsetMeters / earthRadius) * (180 / Math.PI);

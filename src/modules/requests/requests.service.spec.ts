@@ -5,10 +5,11 @@ import { RequestsService } from './requests.service';
 import { Request } from './entities/request.entity';
 import { SavedRequest } from './entities/saved-request.entity';
 import { AccessLog } from './entities/access-log.entity';
+import { Task } from '@modules/tasks/entities/task.entity';
 import { User } from '@modules/users/entities/user.entity';
 import { SystemRole, ClearanceLevel, RequestStatus } from '@common/enums';
 
-describe('RequestsService — logAccess (6.7)', () => {
+describe('RequestsService', () => {
   let service: RequestsService;
   let accessLogRepo: jest.Mocked<Repository<AccessLog>>;
 
@@ -27,6 +28,7 @@ describe('RequestsService — logAccess (6.7)', () => {
     save: jest.fn(),
     softDelete: jest.fn(),
     query: jest.fn(),
+    create: jest.fn(),
   });
 
   const mockSavedRequestRepo = () => ({
@@ -41,6 +43,12 @@ describe('RequestsService — logAccess (6.7)', () => {
     save: jest.fn().mockResolvedValue({}),
   });
 
+  const mockTaskRepo = () => ({
+    create: jest.fn(),
+    save: jest.fn(),
+    findOne: jest.fn(),
+  });
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -48,6 +56,7 @@ describe('RequestsService — logAccess (6.7)', () => {
         { provide: getRepositoryToken(Request), useFactory: mockRequestRepo },
         { provide: getRepositoryToken(SavedRequest), useFactory: mockSavedRequestRepo },
         { provide: getRepositoryToken(AccessLog), useFactory: mockAccessLogRepo },
+        { provide: getRepositoryToken(Task), useFactory: mockTaskRepo },
       ],
     }).compile();
 
