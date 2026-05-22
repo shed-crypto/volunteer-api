@@ -7,110 +7,433 @@ import { SavedRequest } from './entities/saved-request.entity';
 import { AccessLog } from './entities/access-log.entity';
 import { Task } from '@modules/tasks/entities/task.entity';
 import { User } from '@modules/users/entities/user.entity';
-import { SystemRole, ClearanceLevel, RequestStatus } from '@common/enums';
+import {
+  SystemRole,
+  ClearanceLevel,
+  RequestStatus,
+  RequestCategory,
+  TaskStatus,
+  TaskOrigin,
+} from '@common/enums';
 
 describe('RequestsService', () => {
   let service: RequestsService;
+  let requestRepo: jest.Mocked<Repository<Request>>;
+  let savedRequestRepo: jest.Mocked<Repository<SavedRequest>>;
   let accessLogRepo: jest.Mocked<Repository<AccessLog>>;
+  let taskRepo: jest.Mocked<Repository<Task>>;
 
-  const mockRequestRepo = () => ({
-    createQueryBuilder: jest.fn(() => ({
-      leftJoinAndSelect: jest.fn().mockReturnThis(),
-      where: jest.fn().mockReturnThis(),
-      andWhere: jest.fn().mockReturnThis(),
-      getOne: jest.fn(),
-      getMany: jest.fn(),
-      orderBy: jest.fn().mockReturnThis(),
-      limit: jest.fn().mockReturnThis(),
-      offset: jest.fn().mockReturnThis(),
-    })),
-    findOne: jest.fn(),
-    save: jest.fn(),
-    softDelete: jest.fn(),
-    query: jest.fn(),
-    create: jest.fn(),
-  });
+  const createRequest = (overrides: Partial<Request> = {}): Request =>
+    ({
+      id: 'req-1',
+      title: 'Test Request',
+      description: 'Test description',
+      status: RequestStatus.OPEN,
+      creatorId: 'creator-id',
+      createdAt: new Date('2025-01-01'),
+      updatedAt: new Date('2025-01-01'),
+      isLocationHidden: false,
+      latitude: 50.45,
+      longitude: 30.52,
+      tags: [],
+      mediaUrls: [{ url: 'http://example.com/img.jpg', blurred: false }],
+      additionalInfo: [],
+      requiredClearance: ClearanceLevel.LOCAL,
+      ...overrides,
+    } as Request);
 
-  const mockSavedRequestRepo = () => ({
-    find: jest.fn().mockResolvedValue([]),
-    findOne: jest.fn(),
-    save: jest.fn(),
-    delete: jest.fn(),
-    exists: jest.fn().mockResolvedValue(false),
-  });
-
-  const mockAccessLogRepo = () => ({
-    save: jest.fn().mockResolvedValue({}),
-  });
-
-  const mockTaskRepo = () => ({
-    create: jest.fn(),
-    save: jest.fn(),
-    findOne: jest.fn(),
-  });
+  const createUser = (overrides: Partial<User> = {}): User =>
+    ({
+      id: 'viewer-id',
+      email: 'viewer@test.com',
+      fullName: 'Viewer',
+      passwordHash: 'hash',
+      systemRole: SystemRole.VOLUNTEER,
+      clearanceLevel: ClearanceLevel.LOCAL,
+      trustScore: 0,
+      isBlocked: false,
+      isEmailVerified: true,
+      isIdentityVerified: true,
+      phoneNumber: '+380501234567',
+      avatarUrl: 'http://example.com/avatar.jpg',
+      refreshTokenHash: null,
+      emailVerificationToken: null,
+      passwordResetCode: null,
+      passwordResetToken: null,
+      passwordResetExpires: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      vehicles: [],
+      givenVouches: [],
+      receivedVouches: [],
+      organizationMemberships: [],
+      taskAssignments: [],
+      ...overrides,
+    } as User);
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         RequestsService,
-        { provide: getRepositoryToken(Request), useFactory: mockRequestRepo },
-        { provide: getRepositoryToken(SavedRequest), useFactory: mockSavedRequestRepo },
-        { provide: getRepositoryToken(AccessLog), useFactory: mockAccessLogRepo },
-        { provide: getRepositoryToken(Task), useFactory: mockTaskRepo },
+        {
+          provide: getRepositoryToken(Request),
+          useValue: {
+            createQueryBuilder: jest.fn(),
+            findOne: jest.fn(),
+            save: jest.fn(),
+            softDelete: jest.fn(),
+            query: jest.fn(),
+            create: jest.fn(),
+            findAndCount: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(SavedRequest),
+          useValue: {
+            find: jest.fn().mockResolvedValue([]),
+            findOne: jest.fn(),
+            save: jest.fn(),
+            delete: jest.fn(),
+            exists: jest.fn().mockResolvedValue(false),
+            create: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(AccessLog),
+          useValue: {
+            save: jest.fn().mockResolvedValue({}),
+            createQueryBuilder: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(Task),
+          useValue: {
+            create: jest.fn(),
+            save: jest.fn(),
+            findOne: jest.fn(),
+            createQueryBuilder: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     service = module.get<RequestsService>(RequestsService);
+    requestRepo = module.get(getRepositoryToken(Request));
+    savedRequestRepo = module.get(getRepositoryToken(SavedRequest));
     accessLogRepo = module.get(getRepositoryToken(AccessLog));
+    taskRepo = module.get(getRepositoryToken(Task));
   });
 
-  const createRequest = (overrides: Partial<Request> = {}): Request => ({
-    id: 'req-1',
-    title: 'Test FRONTLINE Request',
-    description: 'Test description',
-    status: RequestStatus.OPEN,
-    creatorId: 'creator-id',
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    isLocationHidden: true,
-    latitude: 50.0,
-    longitude: 30.0,
-    tags: [],
-    mediaUrls: [{ url: 'http://example.com/img.jpg', blurred: false }],
-    requiredClearance: ClearanceLevel.FRONTLINE,
-    ...overrides,
-  } as Request);
+  // =====================================================================
+  // 6.1 — Обфускація координат
+  // =====================================================================
 
-  const createUser = (overrides: Partial<User> = {}): User => ({
-    id: 'viewer-id',
-    email: 'viewer@test.com',
-    fullName: 'Viewer',
-    passwordHash: 'hash',
-    systemRole: SystemRole.VOLUNTEER,
-    clearanceLevel: ClearanceLevel.FRONTLINE,
-    trustScore: 0,
-    isBlocked: false,
-    isEmailVerified: true,
-    isIdentityVerified: true,
-    phoneNumber: '+380501234567',
-    avatarUrl: 'http://example.com/avatar.jpg',
-    refreshTokenHash: null,
-    emailVerificationToken: null,
-    passwordResetCode: null,
-    passwordResetToken: null,
-    passwordResetExpires: null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    vehicles: [],
-    givenVouches: [],
-    receivedVouches: [],
-    organizationMemberships: [],
-    taskAssignments: [],
-    ...overrides,
-  } as User);
+  it('6.1a — обфускація: власник бачить точні координати', () => {
+    const req = createRequest({ creatorId: 'owner-id' });
+    const owner = createUser({ id: 'owner-id' });
+
+    const result = (service as any).obfuscateLocation(req, owner);
+
+    expect(result.latitude).toBe(50.45);
+    expect(result.longitude).toBe(30.52);
+  });
+
+  it('6.1b — обфускація: FRONTLINE користувач бачить точні координати', () => {
+    const req = createRequest({ creatorId: 'other-id' });
+    const frontline = createUser({
+      id: 'frontline-id',
+      clearanceLevel: ClearanceLevel.FRONTLINE,
+    });
+
+    const result = (service as any).obfuscateLocation(req, frontline);
+
+    expect(result.latitude).toBe(50.45);
+    expect(result.longitude).toBe(30.52);
+  });
+
+  it('6.1c — обфускація: LOCAL користувач НЕ бачить точні координати', () => {
+    const req = createRequest({ creatorId: 'other-id' });
+    const local = createUser({
+      id: 'local-id',
+      clearanceLevel: ClearanceLevel.LOCAL,
+    });
+
+    const result = (service as any).obfuscateLocation(req, local);
+
+    // Координати мають бути змінені (обфусковані)
+    const exactlyOriginal = result.latitude === 50.45 && result.longitude === 30.52;
+    expect(exactlyOriginal).toBe(false);
+  });
+
+  it('6.1d — обфускація: Адміністратор бачить точні координати', () => {
+    const req = createRequest({ creatorId: 'other-id' });
+    const admin = createUser({
+      id: 'admin-id',
+      systemRole: SystemRole.ADMIN,
+      clearanceLevel: ClearanceLevel.LOCAL,
+    });
+
+    const result = (service as any).obfuscateLocation(req, admin);
+
+    expect(result.latitude).toBe(50.45);
+    expect(result.longitude).toBe(30.52);
+  });
+
+  // =====================================================================
+  // 6.2 — Авто-категоризація (auto-tagging)
+  // =====================================================================
+
+  it('6.2a — автотег: текст містить "медик" → тег "#Медицина"', () => {
+    const tags = (service as any).autoCategorizeTags('Потрібен медик для огляду');
+    expect(tags).toContain('#Медицина');
+  });
+
+  it('6.2b — автотег: текст містить "евакуація" → тег "#Евакуація"', () => {
+    const tags = (service as any).autoCategorizeTags('Термінова евакуація з міста');
+    expect(tags).toContain('#Евакуація');
+  });
+
+  it('6.2c — автотег: текст без ключових слів → порожній масив', () => {
+    const tags = (service as any).autoCategorizeTags('Звичайний опис без спеціальних слів');
+    expect(tags).toEqual([]);
+  });
+
+  it('6.2d — автотег: кілька ключових слів → кілька тегів', () => {
+    const tags = (service as any).autoCategorizeTags(
+      'Потрібен транспорт для доставки ліки та перевезення поранених',
+    );
+    expect(tags).toContain('#Медицина');
+    expect(tags).toContain('#Логістика');
+  });
+
+  // =====================================================================
+  // 6.3 — Clearance фільтрація (checkClearanceAccess)
+  // =====================================================================
+
+  it('6.3a — clearance: LOCAL не може переглядати FRONTLINE заявку', () => {
+    const req = createRequest({
+      requiredClearance: ClearanceLevel.FRONTLINE,
+      creatorId: 'other-id',
+    });
+    const local = createUser({
+      id: 'local-id',
+      clearanceLevel: ClearanceLevel.LOCAL,
+    });
+
+    expect(() => (service as any).checkClearanceAccess(req, local)).toThrow(
+      'Недостатній рівень допуску',
+    );
+  });
+
+  it('6.3b — clearance: ADMIN бачить будь-яку заявку', () => {
+    const req = createRequest({
+      requiredClearance: ClearanceLevel.FRONTLINE,
+      creatorId: 'other-id',
+    });
+    const admin = createUser({
+      id: 'admin-id',
+      systemRole: SystemRole.ADMIN,
+      clearanceLevel: ClearanceLevel.LOCAL,
+    });
+
+    expect(() => (service as any).checkClearanceAccess(req, admin)).not.toThrow();
+  });
+
+  it('6.3c — clearance: COORDINATOR бачить будь-яку заявку', () => {
+    const req = createRequest({
+      requiredClearance: ClearanceLevel.FRONTLINE,
+      creatorId: 'other-id',
+    });
+    const coordinator = createUser({
+      id: 'coord-id',
+      systemRole: SystemRole.COORDINATOR,
+      clearanceLevel: ClearanceLevel.LOCAL,
+    });
+
+    expect(() =>
+      (service as any).checkClearanceAccess(req, coordinator),
+    ).not.toThrow();
+  });
+
+  // =====================================================================
+  // 6.4 — Create (створення заявки)
+  // =====================================================================
+
+  it('6.4a — create: успішне створення заявки з авто-задачею', async () => {
+    const dto = {
+      title: 'Нова заявка',
+      description: 'Опис',
+      category: RequestCategory.MEDICAL,
+      urgency: undefined,
+      latitude: 50.45,
+      longitude: 30.52,
+      isLocationHidden: false,
+      requiredClearance: ClearanceLevel.LOCAL,
+      tags: [],
+    };
+    const creator = createUser({ id: 'creator-id' });
+
+    const savedRequest = { id: 'req-1', ...dto, creatorId: 'creator-id', tags: ['#Медицина'] };
+    requestRepo.create.mockReturnValue(savedRequest as any);
+    requestRepo.save.mockResolvedValue(savedRequest as any);
+    taskRepo.create.mockReturnValue({ requestId: 'req-1', title: 'Виконати заявку' } as any);
+    taskRepo.save.mockResolvedValue({} as any);
+    requestRepo.query.mockResolvedValue(undefined);
+
+    const result = await service.create(dto as any, creator as User);
+
+    expect(result).toBeDefined();
+    expect(requestRepo.save).toHaveBeenCalled();
+    expect(taskRepo.save).toHaveBeenCalled();
+    expect(result.tags).toContain('#Медицина');
+  });
+
+  it('6.4b — create: без координат — не робить PostGIS запит', async () => {
+    const dto = {
+      title: 'Заявка без координат',
+      description: 'Опис',
+      category: RequestCategory.OTHER,
+      urgency: undefined,
+      requiredClearance: ClearanceLevel.LOCAL,
+      tags: [],
+    };
+    const creator = createUser({ id: 'creator-id' });
+
+    const savedRequest = { id: 'req-2', ...dto, creatorId: 'creator-id', tags: [] };
+    requestRepo.create.mockReturnValue(savedRequest as any);
+    requestRepo.save.mockResolvedValue(savedRequest as any);
+    taskRepo.create.mockReturnValue({ requestId: 'req-2' } as any);
+    taskRepo.save.mockResolvedValue({} as any);
+
+    await service.create(dto as any, creator as User);
+
+    // query() не має викликатись для PostGIS
+    expect(requestRepo.query).not.toHaveBeenCalled();
+  });
+
+  // =====================================================================
+  // 6.5 — addInfo (доповнення інформації)
+  // =====================================================================
+
+  it('6.5a — addInfo: власник додає доповнення', async () => {
+    const req = createRequest({ creatorId: 'owner-id', additionalInfo: [] });
+    requestRepo.findOne.mockResolvedValue(req as any);
+    requestRepo.save.mockResolvedValue(req as any);
+
+    const dto = { text: 'Нова інформація', attachments: [] };
+    const owner = createUser({ id: 'owner-id' });
+
+    const result = await service.addInfo('req-1', dto, owner as User);
+
+    expect(result.additionalInfo).toHaveLength(1);
+    expect(result.additionalInfo[0].text).toBe('Нова інформація');
+  });
+
+  it('6.5b — addInfo: не-власник ВІДХИЛЯЄТЬСЯ', async () => {
+    const req = createRequest({ creatorId: 'owner-id' });
+    requestRepo.findOne.mockResolvedValue(req as any);
+
+    const dto = { text: 'Спроба доповнити', attachments: [] };
+    const other = createUser({ id: 'other-id' });
+
+    await expect(service.addInfo('req-1', dto, other as User)).rejects.toThrow(
+      'Тільки власник',
+    );
+  });
+
+  // =====================================================================
+  // 6.6 — Статусні операції
+  // =====================================================================
+
+  it('6.6a — cancel: власник скасовує OPEN заявку', async () => {
+    const req = createRequest({ creatorId: 'owner-id', status: RequestStatus.OPEN });
+    requestRepo.findOne.mockResolvedValue(req as any);
+    requestRepo.save.mockResolvedValue({ ...req, status: RequestStatus.CANCELLED } as any);
+
+    const owner = createUser({ id: 'owner-id' });
+    const result = await service.cancel('req-1', 'Причина', owner as User);
+
+    expect(result.status).toBe(RequestStatus.CANCELLED);
+    // Перевіряємо що save було викликано з cancelReason
+    expect(requestRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ cancelReason: 'Причина', status: RequestStatus.CANCELLED }),
+    );
+  });
+
+  it('6.6b — cancel: не-власник ВІДХИЛЯЄТЬСЯ', async () => {
+    const req = createRequest({ creatorId: 'other-id', status: RequestStatus.OPEN });
+    requestRepo.findOne.mockResolvedValue(req as any);
+
+    const notOwner = createUser({ id: 'random-id' });
+    await expect(service.cancel('req-1', 'Причина', notOwner as User)).rejects.toThrow(
+      'Немає прав',
+    );
+  });
+
+  it('6.6c — cancel: COMPLETED заявку не можна скасувати', async () => {
+    const req = createRequest({
+      creatorId: 'owner-id',
+      status: RequestStatus.COMPLETED,
+    });
+    requestRepo.findOne.mockResolvedValue(req as any);
+
+    const owner = createUser({ id: 'owner-id' });
+    await expect(service.cancel('req-1', 'Причина', owner as User)).rejects.toThrow(
+      'Завершену заявку',
+    );
+  });
+
+  it('6.6d — confirmCompletion: власник підтверджує виконання', async () => {
+    const req = createRequest({ creatorId: 'owner-id', status: RequestStatus.IN_PROGRESS });
+    requestRepo.findOne.mockResolvedValue(req as any);
+    requestRepo.save.mockResolvedValue({
+      ...req,
+      status: RequestStatus.COMPLETED,
+    } as any);
+
+    const owner = createUser({ id: 'owner-id' });
+    const result = await service.confirmCompletion('req-1', owner as User);
+
+    expect(result.status).toBe(RequestStatus.COMPLETED);
+  });
+
+  it('6.6e — returnToProgress: повертає CANCELLED → IN_PROGRESS (в межах 10 хв)', async () => {
+    const justCancelled = new Date(Date.now() - 60 * 1000); // 1 хвилина тому
+    const req = createRequest({
+      creatorId: 'owner-id',
+      status: RequestStatus.CANCELLED,
+      cancelledAt: justCancelled,
+    });
+    requestRepo.findOne.mockResolvedValue(req as any);
+    requestRepo.save.mockResolvedValue({
+      ...req,
+      status: RequestStatus.IN_PROGRESS,
+    } as any);
+
+    const owner = createUser({ id: 'owner-id' });
+    const result = await service.returnToProgress('req-1', owner as User);
+
+    expect(result.status).toBe(RequestStatus.IN_PROGRESS);
+    // Перевіряємо що save було викликано з об'єктом що має очищені поля скасування
+    expect(requestRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: RequestStatus.IN_PROGRESS,
+        cancelReason: null,
+        cancelledAt: null,
+        cancelledByUserId: null,
+      }),
+    );
+  });
+
+  // =====================================================================
+  // 6.7 — Access Log (аудит переглядів)
+  // =====================================================================
 
   it('6.7a — логувати перегляд FRONTLINE заявки не-власником', async () => {
-    const request = createRequest({ requiredClearance: ClearanceLevel.FRONTLINE, creatorId: 'other-id' });
+    const request = createRequest({
+      requiredClearance: ClearanceLevel.FRONTLINE,
+      creatorId: 'other-id',
+    });
     const viewer = createUser({ id: 'viewer-id' });
 
     // Mock the query builder for findOne
@@ -124,7 +447,6 @@ describe('RequestsService', () => {
       })),
     };
 
-    // We'll test logAccess directly instead
     await (service as any).logAccess(request, viewer, 'view_detail');
 
     expect(accessLogRepo.save).toHaveBeenCalled();
@@ -132,11 +454,14 @@ describe('RequestsService', () => {
     expect(logEntry.userId).toBe('viewer-id');
     expect(logEntry.requestId).toBe('req-1');
     expect(logEntry.action).toBe('view_detail');
-    expect(logEntry.clearanceAtAccess).toBe(ClearanceLevel.FRONTLINE);
+    expect(logEntry.clearanceAtAccess).toBe(ClearanceLevel.LOCAL);
   });
 
   it('6.7b — НЕ логувати якщо користувач є власником', async () => {
-    const request = createRequest({ requiredClearance: ClearanceLevel.FRONTLINE, creatorId: 'viewer-id' });
+    const request = createRequest({
+      requiredClearance: ClearanceLevel.FRONTLINE,
+      creatorId: 'viewer-id',
+    });
     const viewer = createUser({ id: 'viewer-id' });
 
     await (service as any).logAccess(request, viewer, 'view_detail');
@@ -145,7 +470,10 @@ describe('RequestsService', () => {
   });
 
   it('6.7c — НЕ логувати для non-FRONTLINE заявок', async () => {
-    const request = createRequest({ requiredClearance: ClearanceLevel.LOCAL, creatorId: 'other-id' });
+    const request = createRequest({
+      requiredClearance: ClearanceLevel.LOCAL,
+      creatorId: 'other-id',
+    });
     const viewer = createUser({ id: 'viewer-id' });
 
     await (service as any).logAccess(request, viewer, 'view_detail');
