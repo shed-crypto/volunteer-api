@@ -817,4 +817,20 @@ describe('TasksService — Delegation', () => {
 
     expect(result.isAccepted).toBe(false);
   });
+
+  // ------------------------------------------------------
+  // 3.4 — findById
+  // ------------------------------------------------------
+
+  it('3.4b — findById: returns task with relations', async () => {
+    const task = { id: 'task-1' };
+    mockTaskRepo.findOne.mockResolvedValue(task as any);
+    const result = await service.findById('task-1');
+    expect(result.id).toBe('task-1');
+  });
+
+  it('3.4c — findById: throws NotFoundException', async () => {
+    mockTaskRepo.findOne.mockResolvedValue(null);
+    await expect(service.findById('unknown')).rejects.toThrow('Підзадачу не знайдено');
+  });
 });
