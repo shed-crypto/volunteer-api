@@ -125,10 +125,10 @@ describe('RequestsService', () => {
   });
 
   // =====================================================================
-  // 6.1 — Obfuscation of coordinates
+  // 6.1 - Obfuscation of coordinates
   // =====================================================================
 
-  it('6.1a — obfuscation: owner sees exact coordinates', () => {
+  it('6.1a - obfuscation: owner sees exact coordinates', () => {
     const req = createRequest({ creatorId: 'owner-id' });
     const owner = createUser({ id: 'owner-id' });
 
@@ -138,7 +138,7 @@ describe('RequestsService', () => {
     expect(result.longitude).toBe(30.52);
   });
 
-  it('6.1b — obfuscation: FRONTLINE user sees exact coordinates', () => {
+  it('6.1b - obfuscation: FRONTLINE user sees exact coordinates', () => {
     const req = createRequest({ creatorId: 'other-id' });
     const frontline = createUser({
       id: 'frontline-id',
@@ -151,7 +151,7 @@ describe('RequestsService', () => {
     expect(result.longitude).toBe(30.52);
   });
 
-  it('6.1c — obfuscation: LOCAL user does NOT see exact coordinates', () => {
+  it('6.1c - obfuscation: LOCAL user does NOT see exact coordinates', () => {
     const req = createRequest({ creatorId: 'other-id' });
     const local = createUser({
       id: 'local-id',
@@ -165,7 +165,7 @@ describe('RequestsService', () => {
     expect(exactlyOriginal).toBe(false);
   });
 
-  it('6.1d — obfuscation: admin sees exact coordinates', () => {
+  it('6.1d - obfuscation: admin sees exact coordinates', () => {
     const req = createRequest({ creatorId: 'other-id' });
     const admin = createUser({
       id: 'admin-id',
@@ -180,25 +180,25 @@ describe('RequestsService', () => {
   });
 
   // =====================================================================
-  // 6.2 — Auto-categorization (auto-tagging)
+  // 6.2 - Auto-categorization (auto-tagging)
   // =====================================================================
 
-  it('6.2a — auto-tag: text contains "medik" — tag "#Medicine"', () => {
+  it('6.2a - auto-tag: text contains "medik" - tag "#Medicine"', () => {
     const tags = (service as any).autoCategorizeTags('Потрібен медик для огляду');
     expect(tags).toContain('#Медицина');
   });
 
-  it('6.2b — auto-tag: text contains "evacuation" — tag "#Evacuation"', () => {
+  it('6.2b - auto-tag: text contains "evacuation" - tag "#Evacuation"', () => {
     const tags = (service as any).autoCategorizeTags('Термінова евакуація з міста');
     expect(tags).toContain('#Евакуація');
   });
 
-  it('6.2c — auto-tag: text without keywords — empty array', () => {
+  it('6.2c - auto-tag: text without keywords - empty array', () => {
     const tags = (service as any).autoCategorizeTags('Звичайний опис без спеціальних слів');
     expect(tags).toEqual([]);
   });
 
-  it('6.2d — автотег: кілька ключових слів → кілька тегів', () => {
+  it('6.2d - автотег: кілька ключових слів → кілька тегів', () => {
     const tags = (service as any).autoCategorizeTags(
       'Потрібен транспорт для доставки ліки та перевезення поранених',
     );
@@ -207,10 +207,10 @@ describe('RequestsService', () => {
   });
 
   // =====================================================================
-  // 6.3 — Clearance filtering (checkClearanceAccess)
+  // 6.3 - Clearance filtering (checkClearanceAccess)
   // =====================================================================
 
-  it('6.3a — clearance: LOCAL cannot view FRONTLINE request', () => {
+  it('6.3a - clearance: LOCAL cannot view FRONTLINE request', () => {
     const req = createRequest({
       requiredClearance: ClearanceLevel.FRONTLINE,
       creatorId: 'other-id',
@@ -225,7 +225,7 @@ describe('RequestsService', () => {
     );
   });
 
-  it('6.3b — clearance: admin sees any request', () => {
+  it('6.3b - clearance: admin sees any request', () => {
     const req = createRequest({
       requiredClearance: ClearanceLevel.FRONTLINE,
       creatorId: 'other-id',
@@ -239,7 +239,7 @@ describe('RequestsService', () => {
     expect(() => (service as any).checkClearanceAccess(req, admin)).not.toThrow();
   });
 
-  it('6.3c — clearance: coordinator sees any request', () => {
+  it('6.3c - clearance: coordinator sees any request', () => {
     const req = createRequest({
       requiredClearance: ClearanceLevel.FRONTLINE,
       creatorId: 'other-id',
@@ -256,10 +256,10 @@ describe('RequestsService', () => {
   });
 
   // =====================================================================
-  // 6.4 — Create (request creation)
+  // 6.4 - Create (request creation)
   // =====================================================================
 
-  it('6.4a — create: successful request creation with auto-task', async () => {
+  it('6.4a - create: successful request creation with auto-task', async () => {
     const dto = {
       title: 'Нова заявка',
       description: 'Опис',
@@ -288,7 +288,7 @@ describe('RequestsService', () => {
     expect(result.tags).toContain('#Медицина');
   });
 
-  it('6.4b — create: without coordinates — no PostGIS query', async () => {
+  it('6.4b - create: without coordinates - no PostGIS query', async () => {
     const dto = {
       title: 'Заявка без координат',
       description: 'Опис',
@@ -312,10 +312,10 @@ describe('RequestsService', () => {
   });
 
   // =====================================================================
-  // 6.5 — addInfo (additional info)
+  // 6.5 - addInfo (additional info)
   // =====================================================================
 
-  it('6.5a — addInfo: owner adds info', async () => {
+  it('6.5a - addInfo: owner adds info', async () => {
     const req = createRequest({ creatorId: 'owner-id', additionalInfo: [] });
     requestRepo.findOne.mockResolvedValue(req as any);
     requestRepo.save.mockResolvedValue(req as any);
@@ -329,7 +329,7 @@ describe('RequestsService', () => {
     expect(result.additionalInfo[0].text).toBe('Нова інформація');
   });
 
-  it('6.5b — addInfo: non-owner rejected', async () => {
+  it('6.5b - addInfo: non-owner rejected', async () => {
     const req = createRequest({ creatorId: 'owner-id' });
     requestRepo.findOne.mockResolvedValue(req as any);
 
@@ -342,10 +342,10 @@ describe('RequestsService', () => {
   });
 
   // =====================================================================
-  // 6.6 — Status operations
+  // 6.6 - Status operations
   // =====================================================================
 
-  it('6.6a — cancel: owner cancels OPEN request', async () => {
+  it('6.6a - cancel: owner cancels OPEN request', async () => {
     const req = createRequest({ creatorId: 'owner-id', status: RequestStatus.OPEN });
     requestRepo.findOne.mockResolvedValue(req as any);
     requestRepo.save.mockResolvedValue({ ...req, status: RequestStatus.CANCELLED } as any);
@@ -360,7 +360,7 @@ describe('RequestsService', () => {
     );
   });
 
-  it('6.6b — cancel: non-owner rejected', async () => {
+  it('6.6b - cancel: non-owner rejected', async () => {
     const req = createRequest({ creatorId: 'other-id', status: RequestStatus.OPEN });
     requestRepo.findOne.mockResolvedValue(req as any);
 
@@ -370,7 +370,7 @@ describe('RequestsService', () => {
     );
   });
 
-  it('6.6c — cancel: COMPLETED request cannot be cancelled', async () => {
+  it('6.6c - cancel: COMPLETED request cannot be cancelled', async () => {
     const req = createRequest({
       creatorId: 'owner-id',
       status: RequestStatus.COMPLETED,
@@ -383,7 +383,7 @@ describe('RequestsService', () => {
     );
   });
 
-  it('6.6d — confirmCompletion: owner confirms completion', async () => {
+  it('6.6d - confirmCompletion: owner confirms completion', async () => {
     const req = createRequest({ creatorId: 'owner-id', status: RequestStatus.IN_PROGRESS });
     requestRepo.findOne.mockResolvedValue(req as any);
     requestRepo.save.mockResolvedValue({
@@ -397,7 +397,7 @@ describe('RequestsService', () => {
     expect(result.status).toBe(RequestStatus.COMPLETED);
   });
 
-  it('6.6e — returnToProgress: returns CANCELLED → IN_PROGRESS (within 10 min)', async () => {
+  it('6.6e - returnToProgress: returns CANCELLED → IN_PROGRESS (within 10 min)', async () => {
     const justCancelled = new Date(Date.now() - 60 * 1000); // 1 хвилина тому
     const req = createRequest({
       creatorId: 'owner-id',
@@ -426,10 +426,10 @@ describe('RequestsService', () => {
   });
 
   // =====================================================================
-  // 6.7 — Access Log (view audit)
+  // 6.7 - Access Log (view audit)
   // =====================================================================
 
-  it('6.7a — log view of FRONTLINE request by non-owner', async () => {
+  it('6.7a - log view of FRONTLINE request by non-owner', async () => {
     const request = createRequest({
       requiredClearance: ClearanceLevel.FRONTLINE,
       creatorId: 'other-id',
@@ -457,7 +457,7 @@ describe('RequestsService', () => {
     expect(logEntry.clearanceAtAccess).toBe(ClearanceLevel.LOCAL);
   });
 
-  it('6.7b — do NOT log if user is owner', async () => {
+  it('6.7b - do NOT log if user is owner', async () => {
     const request = createRequest({
       requiredClearance: ClearanceLevel.FRONTLINE,
       creatorId: 'viewer-id',
@@ -469,7 +469,7 @@ describe('RequestsService', () => {
     expect(accessLogRepo.save).not.toHaveBeenCalled();
   });
 
-  it('6.7c — do NOT log for non-FRONTLINE requests', async () => {
+  it('6.7c - do NOT log for non-FRONTLINE requests', async () => {
     const request = createRequest({
       requiredClearance: ClearanceLevel.LOCAL,
       creatorId: 'other-id',
@@ -482,10 +482,10 @@ describe('RequestsService', () => {
   });
 
   // =====================================================================
-  // 6.8 — remove (request deletion)
+  // 6.8 - remove (request deletion)
   // =====================================================================
 
-  it('6.8a — remove: owner deletes request (within 10 min)', async () => {
+  it('6.8a - remove: owner deletes request (within 10 min)', async () => {
     const req = createRequest({ creatorId: 'owner-id', status: RequestStatus.OPEN, createdAt: new Date() });
     requestRepo.findOne.mockResolvedValue(req as any);
     requestRepo.softDelete.mockResolvedValue({} as any);
@@ -495,7 +495,7 @@ describe('RequestsService', () => {
     expect(requestRepo.findOne).toHaveBeenCalled();
   });
 
-  it('6.8b — remove: non-owner or non-admin rejected', async () => {
+  it('6.8b - remove: non-owner or non-admin rejected', async () => {
     const req = createRequest({ creatorId: 'owner-id' });
     requestRepo.findOne.mockResolvedValue(req as any);
 
@@ -504,10 +504,10 @@ describe('RequestsService', () => {
   });
 
   // =====================================================================
-  // 6.9 — markAsPendingReview (request pending review)
+  // 6.9 - markAsPendingReview (request pending review)
   // =====================================================================
 
-  it('6.9 — markAsPendingReview: changes request status to PENDING_REVIEW', async () => {
+  it('6.9 - markAsPendingReview: changes request status to PENDING_REVIEW', async () => {
     const req = createRequest({ creatorId: 'owner-id', status: RequestStatus.OPEN });
     requestRepo.findOne.mockResolvedValue(req as any);
     requestRepo.save.mockResolvedValue({ ...req, status: RequestStatus.PENDING_REVIEW } as any);
@@ -519,10 +519,10 @@ describe('RequestsService', () => {
   });
 
   // =====================================================================
-  // 6.10 — findOne: detailed request view
+  // 6.10 - findOne: detailed request view
   // =====================================================================
 
-  it('6.10a — findOne: owner sees request', async () => {
+  it('6.10a - findOne: owner sees request', async () => {
     const req = createRequest({ id: 'req-xyz', creatorId: 'owner-id' });
     const mockGetOne = jest.fn().mockResolvedValue(req);
     requestRepo.createQueryBuilder.mockReturnValue({
@@ -538,7 +538,7 @@ describe('RequestsService', () => {
     expect(result.id).toBe('req-xyz');
   });
 
-  it('6.10b — findOne: not found → 404', async () => {
+  it('6.10b - findOne: not found → 404', async () => {
     const mockGetOne = jest.fn().mockResolvedValue(null);
     requestRepo.createQueryBuilder.mockReturnValue({
       leftJoinAndSelect: jest.fn().mockReturnThis(),
@@ -553,10 +553,10 @@ describe('RequestsService', () => {
   });
 
   // =====================================================================
-  // 6.11 — findAll with filters
+  // 6.11 - findAll with filters
   // =====================================================================
 
-  it('6.11 — findAll: returns requests with basic filters', async () => {
+  it('6.11 - findAll: returns requests with basic filters', async () => {
     const mockQb: any = {
       leftJoinAndSelect: jest.fn().mockReturnThis(),
       innerJoinAndSelect: jest.fn().mockReturnThis(),
@@ -579,10 +579,10 @@ describe('RequestsService', () => {
   });
 
   // =====================================================================
-  // 6.12 — saveRequest / unsaveRequest / getSavedRequests
+  // 6.12 - saveRequest / unsaveRequest / getSavedRequests
   // =====================================================================
 
-  it('6.12a — saveRequest: saves request to favorites', async () => {
+  it('6.12a - saveRequest: saves request to favorites', async () => {
     savedRequestRepo.findOne.mockResolvedValue(null);
     savedRequestRepo.save.mockResolvedValue({} as any);
 
@@ -591,7 +591,7 @@ describe('RequestsService', () => {
     expect(savedRequestRepo.save).toHaveBeenCalled();
   });
 
-  it('6.12b — unsaveRequest: removes from favorites', async () => {
+  it('6.12b - unsaveRequest: removes from favorites', async () => {
     savedRequestRepo.delete.mockResolvedValue({} as any);
 
     await service.unsaveRequest('req-1', 'user-1');
@@ -599,7 +599,7 @@ describe('RequestsService', () => {
     expect(savedRequestRepo.delete).toHaveBeenCalledWith({ requestId: 'req-1', userId: 'user-1' });
   });
 
-  it('6.12c — getSavedRequests: returns saved requests with limit/offset', async () => {
+  it('6.12c - getSavedRequests: returns saved requests with limit/offset', async () => {
     const savedItems = [
       { id: 'saved-1', requestId: 'req-1', request: createRequest({ id: 'req-1' }) },
     ];
@@ -611,7 +611,7 @@ describe('RequestsService', () => {
     expect(savedRequestRepo.find).toHaveBeenCalledWith(expect.any(Object));
   });
 
-  it('6.12d — getSavedRequestIds: returns array of saved request IDs', async () => {
+  it('6.12d - getSavedRequestIds: returns array of saved request IDs', async () => {
     savedRequestRepo.find.mockResolvedValue([
       { requestId: 'req-1' },
       { requestId: 'req-2' },
@@ -623,10 +623,10 @@ describe('RequestsService', () => {
   });
 
   // =====================================================================
-  // 6.13 — update (request update)
+  // 6.13 - update (request update)
   // =====================================================================
 
-  it('6.13a — update: owner updates request', async () => {
+  it('6.13a - update: owner updates request', async () => {
     const req = createRequest({ id: 'req-1', creatorId: 'owner-id' });
     requestRepo.findOne.mockResolvedValue(req as any);
     requestRepo.save.mockResolvedValue({ ...req, title: 'Оновлена заявка' } as any);
@@ -637,7 +637,7 @@ describe('RequestsService', () => {
     expect(result.title).toBe('Оновлена заявка');
   });
 
-  it('6.13b — update: non-owner rejected', async () => {
+  it('6.13b - update: non-owner rejected', async () => {
     const req = createRequest({ id: 'req-1', creatorId: 'owner-id' });
     requestRepo.findOne.mockResolvedValue(req as any);
 
