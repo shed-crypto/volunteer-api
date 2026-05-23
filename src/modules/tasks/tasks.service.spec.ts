@@ -713,3 +713,106 @@ describe('TasksService — life cycle methods', () => {
       .rejects.toThrow('Немає прав');
   });
 });
+
+// =====================================================================
+// Етап 3 — Делегування задач (delegateTask / acceptDelegation / declineDelegation)
+// =====================================================================
+
+describe('TasksService — Delegation', () => {
+  let service: TasksService;
+  let mockTaskRepo: any;
+  let mockDelegationRepo: any;
+  let mockOrgMemberRepo: any;
+  let mockRequestRepo: any;
+
+  beforeEach(async () => {
+    mockTaskRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 'task-1', request: { id: 'req-1' } }),
+      save: jest.fn(),
+    };
+    mockDelegationRepo = {
+      findOne: jest.fn(),
+      save: jest.fn().mockImplementation((d) => Promise.resolve(d)),
+      query: jest.fn(),
+    };
+    mockOrgMemberRepo = {
+      findOne: jest.fn().mockResolvedValue({ orgRole: OrgRole.LEADER }),
+      createQueryBuilder: jest.fn().mockReturnValue({
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getOne: jest.fn().mockResolvedValue({ orgRole: OrgRole.LEADER }),
+      }),
+    };
+    mockRequestRepo = {
+      update: jest.fn(),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        TasksService,
+        { provide: getRepositoryToken(Task), useValue: mockTaskRepo },
+        { provide: getRepositoryToken(TaskAssignment), useValue: mockTaskRepo },
+        { provide: getRepositoryToken(TaskDelegation), useValue: mockDelegationRepo },
+        { provide: getRepositoryToken(OrganizationMember), useValue: mockOrgMemberRepo },
+        { provide: getRepositoryToken(Request), useValue: mockRequestRepo },
+        { provide: getRepositoryToken(TrustVouch), useValue: { count: jest.fn().mockResolvedValue(3) } },
+        { provide: getRepositoryToken(Chat), useValue: { save: jest.fn() } },
+        { provide: ChatGateway, useValue: { addParticipantToRoom: jest.fn() } },
+        {
+          provide: DataSource,
+          useValue: {
+            transaction: jest.fn(async (cb: any) => cb({
+              findOne: jest.fn(),
+              find: jest.fn(),
+              count: jest.fn().mockResolvedValue(0),
+              save: jest.fn((x: any) => Promise.resolve(x)),
+              create: jest.fn((x: any) => x),
+            })),
+          },
+        },
+        { provide: NotificationsService, useValue: { notify: jest.fn(), notifyDelegation: jest.fn() } },
+      ],
+    }).compile();
+
+    service = module.get<TasksService>(TasksService);
+  });
+
+  it('3.1 — delegateTask: координатор делегує задачу організації', async () => {
+    mockOrgMemberRepo.findOne.mockResolvedValue({ orgRole: 'coordinator' });
+    mockDelegationRepo.query.mockResolvedValue([{
+      id: 'del-1',
+      taskId: 'task-1',
+      organizationId: 'org-1',
+      isAccepted: null,
+    }]);
+
+    const coordinator = { id: 'coord-id', systemRole: SystemRole.COORDINATOR } as any;
+    const result = await service.delegateTask('task-1', { organizationId: 'org-1', message: 'Test' }, coordinator);
+
+    expect(result).toBeDefined();
+    expect(mockDelegationRepo.query).toHaveBeenCalled();
+  });
+
+  it('3.2 — acceptDelegation: координатор приймає делегування', async () => {
+    const delegation = { id: 'del-1', isAccepted: null, task: { request: { id: 'req-1' } } };
+    mockDelegationRepo.findOne.mockResolvedValue(delegation);
+    mockDelegationRepo.save.mockResolvedValue({ ...delegation, isAccepted: true });
+
+    const coordinator = { id: 'coord-id', systemRole: SystemRole.COORDINATOR } as any;
+    const result = await service.acceptDelegation('task-1', 'org-1', coordinator);
+
+    expect(result.isAccepted).toBe(true);
+    expect(mockRequestRepo.update).toHaveBeenCalledWith('req-1', { managingOrganizationId: 'org-1' });
+  });
+
+  it('3.3 — declineDelegation: координатор відхиляє делегування', async () => {
+    const delegation = { id: 'del-1', isAccepted: null, task: { title: 'Task' } };
+    mockDelegationRepo.findOne.mockResolvedValue(delegation);
+    mockDelegationRepo.save.mockResolvedValue({ ...delegation, isAccepted: false });
+
+    const coordinator = { id: 'coord-id', systemRole: SystemRole.COORDINATOR } as any;
+    const result = await service.declineDelegation('task-1', 'org-1', coordinator);
+
+    expect(result.isAccepted).toBe(false);
+  });
+});
