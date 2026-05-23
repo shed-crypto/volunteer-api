@@ -483,3 +483,109 @@ describe('UsersService — CRUD та профіль', () => {
     expect(mockUserRepo.findOne).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'u1' } }));
   });
 });
+
+describe('UsersService — admin & misc', () => {
+  let service: UsersService;
+  let mockUserRepo: any;
+  let mockVouchRepo: any;
+
+  const createAdmin = (): User =>
+    ({
+      id: 'admin-id',
+      email: 'admin@test.com',
+      fullName: 'Admin',
+      passwordHash: 'hash',
+      systemRole: SystemRole.ADMIN,
+      clearanceLevel: ClearanceLevel.FRONTLINE,
+      trustScore: 100,
+      isBlocked: false,
+      isEmailVerified: true,
+      isIdentityVerified: true,
+      phoneNumber: '+380501234567',
+      avatarUrl: null,
+      refreshTokenHash: null,
+      emailVerificationToken: null,
+      passwordResetCode: null,
+      passwordResetToken: null,
+      passwordResetExpires: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as User);
+
+  beforeEach(async () => {
+    mockUserRepo = {
+      findOne: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
+      save: jest.fn(),
+      manager: {
+        find: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockResolvedValue({}),
+      },
+    };
+
+    mockVouchRepo = {
+      findOne: jest.fn(),
+      count: jest.fn().mockResolvedValue(0),
+      find: jest.fn().mockResolvedValue([]),
+      save: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        UsersService,
+        { provide: getRepositoryToken(User), useValue: mockUserRepo },
+        { provide: getRepositoryToken(TrustVouch), useValue: mockVouchRepo },
+        { provide: getRepositoryToken(Vehicle), useValue: {} },
+      ],
+    }).compile();
+
+    service = module.get<UsersService>(UsersService);
+  });
+
+  it('blockUser: адмін блокує користувача', async () => {
+    const admin = createAdmin();
+    await service.blockUser('target-id', admin);
+    expect(mockUserRepo.update).toHaveBeenCalledWith('target-id', { isBlocked: true });
+  });
+
+  it('blockUser: не-адмін отримує 403', async () => {
+    const user = createAdmin();
+    user.systemRole = SystemRole.VOLUNTEER;
+    await expect(service.blockUser('target-id', user)).rejects.toThrow(ForbiddenException);
+  });
+
+  it('unblockUser: адмін розблоковує користувача', async () => {
+    const admin = createAdmin();
+    mockUserRepo.findOne.mockResolvedValue({ id: 'target-id', isBlocked: true });
+    await service.unblockUser('target-id', admin);
+    expect(mockUserRepo.update).toHaveBeenCalledWith('target-id', { isBlocked: false });
+  });
+
+  it('changeRole: адмін змінює роль', async () => {
+    const admin = createAdmin();
+    mockUserRepo.findOne.mockResolvedValue({ id: 'target-id', systemRole: SystemRole.VOLUNTEER });
+    await service.changeRole('target-id', SystemRole.COORDINATOR, admin);
+    expect(mockUserRepo.update).toHaveBeenCalledWith('target-id', { systemRole: SystemRole.COORDINATOR });
+  });
+
+  it('updateClearance: адмін змінює clearance', async () => {
+    const admin = createAdmin();
+    mockUserRepo.findOne.mockResolvedValue({ id: 'target-id', clearanceLevel: ClearanceLevel.LOCAL, frontlineGrantedByAdmin: false });
+    await service.updateClearance('target-id', ClearanceLevel.FRONTLINE, admin);
+    expect(mockUserRepo.update).toHaveBeenCalled();
+  });
+
+  it('sendPhoneVerificationCode: повертає заглушку', async () => {
+    const result = await service.sendPhoneVerificationCode('user-1');
+    expect(result.message).toContain('not yet enabled');
+    expect(mockUserRepo.update).toHaveBeenCalled();
+  });
+
+  it('verifyPhone: підтверджує телефон (stub)', async () => {
+    const result = await service.verifyPhone('user-1', '123456');
+    expect(result).toBe(true);
+    expect(mockUserRepo.update).toHaveBeenCalled();
+  });
+});
