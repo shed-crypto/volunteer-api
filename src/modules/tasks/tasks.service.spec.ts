@@ -14,7 +14,7 @@ import { NotificationsService } from '@modules/notifications/notifications.servi
 import { ChatGateway } from '@modules/chat/chat.gateway';
 import { TaskStatus, AssignmentStatus, RequestStatus, ClearanceLevel, SystemRole, ChatType, OrgRole } from '@common/enums';
 
-describe('TasksService — assignVolunteer (3.4)', () => {
+describe('TasksService - assignVolunteer (3.4)', () => {
   let service: TasksService;
   let dataSource: DataSource;
   let mockManager: any;
@@ -131,9 +131,9 @@ describe('TasksService — assignVolunteer (3.4)', () => {
   });
 
   // ------------------------------------------------------
-  // 3.4a — Заборонити REQUESTER брати задачу
+  // 3.4a - Заборонити REQUESTER брати задачу
   // ------------------------------------------------------
-  it('3.4a — відхилити REQUESTER користувача', async () => {
+  it('3.4a - reject REQUESTER user', async () => {
     const task = createTask();
     const request = createRequest();
     const requesterUser = createUser({ id: 'req-user', systemRole: SystemRole.REQUESTER });
@@ -151,9 +151,9 @@ describe('TasksService — assignVolunteer (3.4)', () => {
   });
 
   // ------------------------------------------------------
-  // 3.4b — Заборонити з недостатнім clearance (не FRONTLINE)
+  // 3.4b - Заборонити з недостатнім clearance (не FRONTLINE)
   // ------------------------------------------------------
-  it('3.4b — відхилити користувача з LOCAL clearance для INTERNATIONAL задачі', async () => {
+  it('3.4b - reject user with LOCAL clearance for INTERNATIONAL task', async () => {
     const task = createTask();
     const request = createRequest({ requiredClearance: ClearanceLevel.INTERNATIONAL });
     const localUser = createUser({ id: 'local-user', clearanceLevel: ClearanceLevel.LOCAL });
@@ -171,9 +171,9 @@ describe('TasksService — assignVolunteer (3.4)', () => {
   });
 
   // ------------------------------------------------------
-  // 3.4c — Перевірка поручителів для FRONTLINE
+  // 3.4c - Перевірка поручителів для FRONTLINE
   // ------------------------------------------------------
-  it('3.4c — відхилити волонтера без достатньої кількості поручителів для FRONTLINE', async () => {
+  it('3.4c - reject volunteer without enough vouches for FRONTLINE', async () => {
     const task = createTask();
     const request = createRequest({ requiredClearance: ClearanceLevel.FRONTLINE });
     // INTERNATIONAL/LOCAL волонтер без поручителів має бути відхилений
@@ -186,7 +186,7 @@ describe('TasksService — assignVolunteer (3.4)', () => {
       return null;
     });
     mockManager.find.mockResolvedValue([]);
-    // 0 поручителів — недостатньо для FRONTLINE (потрібно 3)
+    // 0 поручителів - недостатньо для FRONTLINE (потрібно 3)
     mockManager.count.mockResolvedValue(0);
 
     await expect(service.assignVolunteer('task-1', {}, volunteer as User))
@@ -194,9 +194,9 @@ describe('TasksService — assignVolunteer (3.4)', () => {
   });
 
   // ------------------------------------------------------
-  // 3.4d — Успішне призначення (TODO → IN_PROGRESS)
+  // 3.4d - Успішне призначення (TODO → IN_PROGRESS)
   // ------------------------------------------------------
-  it('3.4d — успішне призначення: створює запис і переводить задачу в IN_PROGRESS', async () => {
+  it('3.4d - успішне призначення: створює запис і переводить задачу в IN_PROGRESS', async () => {
     const task = createTask();
     const request = createRequest({ requiredClearance: ClearanceLevel.FRONTLINE });
     const volunteer = createUser();
@@ -220,9 +220,9 @@ describe('TasksService — assignVolunteer (3.4)', () => {
   });
 
   // ------------------------------------------------------
-  // 3.4e — Відмова для DONE/CANCELLED задач
+  // 3.4e - Відмова для DONE/CANCELLED задач
   // ------------------------------------------------------
-  it('3.4e — відхилити якщо задача вже DONE', async () => {
+  it('3.4e - reject if task already DONE', async () => {
     const task = createTask({ status: TaskStatus.DONE });
     const request = createRequest();
     const volunteer = createUser();
@@ -240,9 +240,9 @@ describe('TasksService — assignVolunteer (3.4)', () => {
   });
 
   // ------------------------------------------------------
-  // 3.4f — ConflictException при активному призначенні
+  // 3.4f - ConflictException при активному призначенні
   // ------------------------------------------------------
-  it('3.4f — відхилити повторне призначення (вже призначений)', async () => {
+  it('3.4f - відхилити repeated assignment (already assigned)', async () => {
     const task = createTask({ status: TaskStatus.IN_PROGRESS });
     const request = createRequest();
     const volunteer = createUser();
@@ -261,9 +261,9 @@ describe('TasksService — assignVolunteer (3.4)', () => {
   });
 
   // ------------------------------------------------------
-  // 3.4g — UPSERT для WITHDRAWN → ASSIGNED
+  // 3.4g - UPSERT для WITHDRAWN → ASSIGNED
   // ------------------------------------------------------
-  it('3.4g — дозволити повторне призначення після WITHDRAWN (UPSERT)', async () => {
+  it('3.4g - дозволити reassignment after WITHDRAWN (UPSERT)', async () => {
     const task = createTask({ status: TaskStatus.IN_PROGRESS });
     const request = createRequest();
     const volunteer = createUser();
@@ -285,10 +285,10 @@ describe('TasksService — assignVolunteer (3.4)', () => {
 });
 
 // =====================================================================
-// Етап 2 — 8 тестів для інших методів TasksService
+// Етап 2 - 8 тестів для інших методів TasksService
 // =====================================================================
 
-describe('TasksService — life cycle methods', () => {
+describe('TasksService - life cycle methods', () => {
   let service: TasksService;
   let mockTaskRepo: any;
   let mockAssignmentRepo: any;
@@ -414,9 +414,9 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.1 — withdrawAssignment: успішне відкликання
+  // 2.1 - withdrawAssignment: успішне відкликання
   // ------------------------------------------------------
-  it('2.1 — withdrawAssignment: змінює статус на WITHDRAWN', async () => {
+  it('2.1 - withdrawAssignment: changes status to WITHDRAWN', async () => {
     const assignment = {
       id: 'assgn-1',
       taskId: 'task-1',
@@ -434,9 +434,9 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.2 — withdrawAssignment: відхилення COMPLETED
+  // 2.2 - withdrawAssignment: відхилення COMPLETED
   // ------------------------------------------------------
-  it('2.2 — withdrawAssignment: забороняє відмову від COMPLETED', async () => {
+  it('2.2 - withdrawAssignment: forbids rejection from COMPLETED', async () => {
     const assignment = {
       id: 'assgn-2',
       taskId: 'task-1',
@@ -450,9 +450,9 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.3 — completeTask: переводить у PENDING_REVIEW
+  // 2.3 - completeTask: переводить у PENDING_REVIEW
   // ------------------------------------------------------
-  it('2.3 — completeTask: виконавець переводить задачу в PENDING_REVIEW', async () => {
+  it('2.3 - completeTask: executor moves task to PENDING_REVIEW', async () => {
     const task = createTask({
       status: TaskStatus.IN_PROGRESS,
       assignments: [
@@ -468,9 +468,9 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.4 — confirmTaskCompletion: автор заявки підтверджує
+  // 2.4 - confirmTaskCompletion: автор заявки підтверджує
   // ------------------------------------------------------
-  it('2.4 — confirmTaskCompletion: автор підтверджує → DONE', async () => {
+  it('2.4 - confirmTaskCompletion: author confirms - DONE', async () => {
     const task = createTask({
       status: TaskStatus.PENDING_REVIEW,
       request: { id: 'req-1', creatorId: 'creator-id' } as any,
@@ -489,9 +489,9 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.5 — confirmTaskCompletion: не-автор ВІДХИЛЯЄТЬСЯ
+  // 2.5 - confirmTaskCompletion: не-автор ВІДХИЛЯЄТЬСЯ
   // ------------------------------------------------------
-  it('2.5 — confirmTaskCompletion: не-власник заявки не може підтвердити', async () => {
+  it('2.5 - confirmTaskCompletion: non-owner cannot confirm', async () => {
     const task = createTask({
       status: TaskStatus.PENDING_REVIEW,
       request: { id: 'req-1', creatorId: 'another-user' } as any,
@@ -508,9 +508,9 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.6 — rejectTask: автор відхиляє виконання
+  // 2.6 - rejectTask: автор відхиляє виконання
   // ------------------------------------------------------
-  it('2.6 — rejectTask: автор відхиляє → IN_PROGRESS', async () => {
+  it('2.6 - rejectTask: author rejects - IN_PROGRESS', async () => {
     const task = createTask({
       status: TaskStatus.PENDING_REVIEW,
       request: { id: 'req-1', creatorId: 'creator-id' } as any,
@@ -529,9 +529,9 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.7 — cancelTask: адмін скасовує задачу
+  // 2.7 - cancelTask: адмін скасовує задачу
   // ------------------------------------------------------
-  it('2.7 — cancelTask: адмін скасовує → CANCELLED', async () => {
+  it('2.7 - cancelTask: admin cancels - CANCELLED', async () => {
     const task = createTask({
       status: TaskStatus.TODO,
       request: { id: 'req-1', creatorId: 'creator-id' } as any,
@@ -546,9 +546,9 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.8 — renewTask: відновлення скасованої задачі
+  // 2.8 - renewTask: відновлення скасованої задачі
   // ------------------------------------------------------
-  it('2.8 — renewTask: адмін відновлює CANCELLED → TODO', async () => {
+  it('2.8 - renewTask: admin renews CANCELLED → TODO', async () => {
     const task = createTask({
       status: TaskStatus.CANCELLED,
       request: { id: 'req-1', creatorId: 'creator-id' } as any,
@@ -563,9 +563,9 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.9 — renewTask: забороняє відновлення не-CANCELLED
+  // 2.9 - renewTask: забороняє відновлення не-CANCELLED
   // ------------------------------------------------------
-  it('2.9 — renewTask: відхиляє відновлення TODO задачі', async () => {
+  it('2.9 - renewTask: rejects renewal of TODO task', async () => {
     const task = createTask({
       status: TaskStatus.TODO,
       request: { id: 'req-1', creatorId: 'creator-id' } as any,
@@ -578,9 +578,9 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.10 — updateAssignmentStatus: EN_ROUTE
+  // 2.10 - updateAssignmentStatus: EN_ROUTE
   // ------------------------------------------------------
-  it('2.10 — updateAssignmentStatus: змінює статус на EN_ROUTE', async () => {
+  it('2.10 - updateAssignmentStatus: changes status to EN_ROUTE', async () => {
     const assignment = {
       id: 'assgn-5',
       taskId: 'task-1',
@@ -596,9 +596,9 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.11 — updateAssignmentStatus: ON_SITE
+  // 2.11 - updateAssignmentStatus: ON_SITE
   // ------------------------------------------------------
-  it('2.11 — updateAssignmentStatus: змінює статус на ON_SITE', async () => {
+  it('2.11 - updateAssignmentStatus: changes status to ON_SITE', async () => {
     const assignment = {
       id: 'assgn-6',
       taskId: 'task-1',
@@ -614,18 +614,18 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.12 — updateAssignmentStatus: відхиляє невалідний статус
+  // 2.12 - updateAssignmentStatus: відхиляє невалідний статус
   // ------------------------------------------------------
-  it('2.12 — updateAssignmentStatus: відхиляє COMPLETED статус', async () => {
+  it('2.12 - updateAssignmentStatus: rejects COMPLETED status', async () => {
     await expect(
       service.updateAssignmentStatus('task-1', AssignmentStatus.COMPLETED, createUser() as User),
     ).rejects.toThrow('Дозволені статуси');
   });
 
   // ------------------------------------------------------
-  // 2.13 — updateAssignmentStatus: відхиляє WITHDRAWN призначення
+  // 2.13 - updateAssignmentStatus: відхиляє WITHDRAWN призначення
   // ------------------------------------------------------
-  it('2.13 — updateAssignmentStatus: відхиляє зміну для WITHDRAWN', async () => {
+  it('2.13 - updateAssignmentStatus: rejects change for WITHDRAWN', async () => {
     const assignment = {
       id: 'assgn-7',
       taskId: 'task-1',
@@ -640,9 +640,9 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.14 — updateTaskStatusAdmin: адмін примусово змінює статус
+  // 2.14 - updateTaskStatusAdmin: адмін примусово змінює статус
   // ------------------------------------------------------
-  it('2.14 — updateTaskStatusAdmin: примусово змінює статус задачі', async () => {
+  it('2.14 - updateTaskStatusAdmin: forcibly changes task status', async () => {
     const task = createTask({ status: TaskStatus.TODO });
     mockTaskRepo.findOne.mockResolvedValue(task);
     mockTaskRepo.save.mockResolvedValue({ ...task, status: TaskStatus.IN_PROGRESS });
@@ -654,9 +654,9 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.15 — updateTaskStatusAdmin: не-адмін відхиляється
+  // 2.15 - updateTaskStatusAdmin: не-адмін відхиляється
   // ------------------------------------------------------
-  it('2.15 — updateTaskStatusAdmin: забороняє не-адміну змінювати статус', async () => {
+  it('2.15 - updateTaskStatusAdmin: forbids non-admin status change', async () => {
     const volunteer = createUser();
     await expect(
       service.updateTaskStatusAdmin('task-1', TaskStatus.DONE, volunteer as User),
@@ -664,9 +664,9 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.16 — returnToProgress: повертає PENDING_REVIEW → IN_PROGRESS
+  // 2.16 - returnToProgress: returns PENDING_REVIEW → IN_PROGRESS
   // ------------------------------------------------------
-  it('2.16 — returnToProgress: повертає PENDING_REVIEW в IN_PROGRESS', async () => {
+  it('2.16 - returnToProgress: повертає PENDING_REVIEW в IN_PROGRESS', async () => {
     const task = createTask({
       status: TaskStatus.PENDING_REVIEW,
       request: { id: 'req-1', creatorId: 'creator-id' } as any,
@@ -684,9 +684,9 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.17 — cancelTask: координатор може скасувати
+  // 2.17 - cancelTask: coordinator can cancel
   // ------------------------------------------------------
-  it('2.17 — cancelTask: координатор може скасувати задачу', async () => {
+  it('2.17 - cancelTask: coordinator can cancel задачу', async () => {
     const task = createTask({
       status: TaskStatus.TODO,
       request: { id: 'req-1', creatorId: 'creator-id' } as any,
@@ -701,9 +701,9 @@ describe('TasksService — life cycle methods', () => {
   });
 
   // ------------------------------------------------------
-  // 2.18 — cancelTask: звичайний волонтер не може скасувати
+  // 2.18 - cancelTask: звичайний волонтер не може скасувати
   // ------------------------------------------------------
-  it('2.18 — cancelTask: волонтер не може скасувати чужу задачу', async () => {
+  it('2.18 - cancelTask: volunteer cannot cancel foreign task', async () => {
     const task = createTask({
       status: TaskStatus.TODO,
       request: { id: 'req-1', creatorId: 'another-user' } as any,
@@ -717,10 +717,10 @@ describe('TasksService — life cycle methods', () => {
 });
 
 // =====================================================================
-// Етап 3 — Делегування задач (delegateTask / acceptDelegation / declineDelegation)
+// Етап 3 - Делегування задач (delegateTask / acceptDelegation / declineDelegation)
 // =====================================================================
 
-describe('TasksService — Delegation', () => {
+describe('TasksService - Delegation', () => {
   let service: TasksService;
   let mockTaskRepo: any;
   let mockDelegationRepo: any;
@@ -779,7 +779,7 @@ describe('TasksService — Delegation', () => {
     service = module.get<TasksService>(TasksService);
   });
 
-  it('3.1 — delegateTask: координатор делегує задачу організації', async () => {
+  it('3.1 - delegateTask: coordinator delegates task to organization', async () => {
     mockOrgMemberRepo.findOne.mockResolvedValue({ orgRole: 'coordinator' });
     mockDelegationRepo.query.mockResolvedValue([{
       id: 'del-1',
@@ -795,7 +795,7 @@ describe('TasksService — Delegation', () => {
     expect(mockDelegationRepo.query).toHaveBeenCalled();
   });
 
-  it('3.2 — acceptDelegation: координатор приймає делегування', async () => {
+  it('3.2 - acceptDelegation: coordinator accepts delegation', async () => {
     const delegation = { id: 'del-1', isAccepted: null, task: { request: { id: 'req-1' } } };
     mockDelegationRepo.findOne.mockResolvedValue(delegation);
     mockDelegationRepo.save.mockResolvedValue({ ...delegation, isAccepted: true });
@@ -807,7 +807,7 @@ describe('TasksService — Delegation', () => {
     expect(mockRequestRepo.update).toHaveBeenCalledWith('req-1', { managingOrganizationId: 'org-1' });
   });
 
-  it('3.3 — declineDelegation: координатор відхиляє делегування', async () => {
+  it('3.3 - declineDelegation: coordinator declines delegation', async () => {
     const delegation = { id: 'del-1', isAccepted: null, task: { title: 'Task' } };
     mockDelegationRepo.findOne.mockResolvedValue(delegation);
     mockDelegationRepo.save.mockResolvedValue({ ...delegation, isAccepted: false });
@@ -819,17 +819,17 @@ describe('TasksService — Delegation', () => {
   });
 
   // ------------------------------------------------------
-  // 3.4 — findById
+  // 3.4 - findById
   // ------------------------------------------------------
 
-  it('3.4b — findById: returns task with relations', async () => {
+  it('3.4b - findById: returns task with relations', async () => {
     const task = { id: 'task-1' };
     mockTaskRepo.findOne.mockResolvedValue(task as any);
     const result = await service.findById('task-1');
     expect(result.id).toBe('task-1');
   });
 
-  it('3.4c — findById: throws NotFoundException', async () => {
+  it('3.4c - findById: throws NotFoundException', async () => {
     mockTaskRepo.findOne.mockResolvedValue(null);
     await expect(service.findById('unknown')).rejects.toThrow('Підзадачу не знайдено');
   });
