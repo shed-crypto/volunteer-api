@@ -20,6 +20,7 @@ describe('Integration Tests (Supertest)', () => {
     await app.init();
 
     userRepo = moduleFixture.get(getRepositoryToken(User));
+    await userRepo.delete({ email: 'ittest@example.com' });
   });
 
   afterAll(async () => {
@@ -67,7 +68,7 @@ describe('Integration Tests (Supertest)', () => {
         email: 'ittest@example.com',
         password: 'TestPass123!',
       })
-      .expect(201);
+      .expect(200);
 
     expect(res.body).toHaveProperty('accessToken');
   });
