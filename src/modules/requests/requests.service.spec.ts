@@ -644,4 +644,7 @@ describe('RequestsService', () => {
     const other = createUser({ id: 'other-id' });
     await expect(service.update('req-1', { title: 'New' } as any, other as User)).rejects.toThrow('Немає прав');
   });
+
+  // (findOne already covered in 6.10)
+  // (remove already covered in 6.8)
 });
