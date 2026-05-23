@@ -103,6 +103,7 @@ describe('TasksService — assignVolunteer (3.4)', () => {
     const mockNotificationsService = {
       notifyVolunteerAssigned: jest.fn().mockResolvedValue(undefined),
       notifyRequesterTeamFound: jest.fn().mockResolvedValue(undefined),
+      notifyDelegation: jest.fn().mockResolvedValue(undefined),
     };
 
     const mockChatGateway = {
@@ -386,6 +387,7 @@ describe('TasksService — life cycle methods', () => {
     const mockNotificationsService = {
       notifyVolunteerAssigned: jest.fn().mockResolvedValue(undefined),
       notifyRequesterTeamFound: jest.fn().mockResolvedValue(undefined),
+      notifyDelegation: jest.fn().mockResolvedValue(undefined),
     };
 
     const mockChatGateway = {
@@ -770,7 +772,7 @@ describe('TasksService — Delegation', () => {
             })),
           },
         },
-        { provide: NotificationsService, useValue: { notify: jest.fn(), notifyDelegation: jest.fn() } },
+        { provide: NotificationsService, useValue: { notify: jest.fn(), notifyDelegation: jest.fn().mockResolvedValue(undefined) } },
       ],
     }).compile();
 
