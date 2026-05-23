@@ -399,3 +399,87 @@ describe('UsersService — admin methods', () => {
     });
   });
 });
+
+// =====================================================================
+// Етап 4 — Тести на CRUD, профіль та статистику
+// =====================================================================
+
+describe('UsersService — CRUD та профіль', () => {
+  let service: UsersService;
+  let mockUserRepo: any;
+  let mockVouchRepo: any;
+  let mockVehicleRepo: any;
+
+  beforeEach(async () => {
+    mockUserRepo = {
+      find: jest.fn().mockResolvedValue([
+        { id: 'u1', fullName: 'Alice', systemRole: SystemRole.VOLUNTEER, clearanceLevel: ClearanceLevel.LOCAL, trustScore: 0 },
+      ]),
+      findOne: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
+    };
+
+    mockVouchRepo = {
+      find: jest.fn().mockResolvedValue([]),
+      count: jest.fn().mockResolvedValue(0),
+    };
+
+    mockVehicleRepo = {};
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        UsersService,
+        { provide: getRepositoryToken(User), useValue: mockUserRepo },
+        { provide: getRepositoryToken(TrustVouch), useValue: mockVouchRepo },
+        { provide: getRepositoryToken(Vehicle), useValue: mockVehicleRepo },
+      ],
+    }).compile();
+
+    service = module.get<UsersService>(UsersService);
+  });
+
+  it('4.1 — findAll: повертає список користувачів', async () => {
+    const result = await service.findAll();
+    expect(result).toHaveLength(1);
+    expect(result[0].fullName).toBe('Alice');
+  });
+
+  it('4.2 — findAllForAdmin: повертає юзерів з vouchCount', async () => {
+    mockUserRepo.find.mockResolvedValue([
+      { id: 'u1', fullName: 'Alice' },
+      { id: 'u2', fullName: 'Bob' },
+    ]);
+    mockVouchRepo.count.mockResolvedValueOnce(5).mockResolvedValueOnce(2);
+
+    const result = await service.findAllForAdmin();
+    expect(result).toHaveLength(2);
+    expect(result[0].vouchCount).toBe(5);
+    expect(result[1].vouchCount).toBe(2);
+  });
+
+  it('4.3 — updateProfile: власник редагує власний профіль', async () => {
+    const currentUser = { id: 'u1', systemRole: SystemRole.VOLUNTEER } as User;
+    mockUserRepo.findOne.mockResolvedValue({ id: 'u1', fullName: 'Updated' } as User);
+
+    const result = await service.updateProfile('u1', { fullName: 'Updated' }, currentUser);
+    expect(mockUserRepo.update).toHaveBeenCalledWith('u1', expect.objectContaining({ fullName: 'Updated' }));
+  });
+
+  it('4.4 — updateProfile: не-власник ВІДХИЛЯЄТЬСЯ', async () => {
+    const currentUser = { id: 'u2', systemRole: SystemRole.VOLUNTEER } as User;
+    await expect(service.updateProfile('u1', { fullName: 'Hacked' }, currentUser)).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('4.5 — findById: репозиторій отримує юзера з реляціями', async () => {
+    mockUserRepo.findOne.mockResolvedValue({
+      id: 'u1',
+      fullName: 'Alice',
+    } as User);
+
+    const result = await service.findById('u1');
+    expect(result).toBeDefined();
+    expect(mockUserRepo.findOne).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'u1' } }));
+  });
+});
