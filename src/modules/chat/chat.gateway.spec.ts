@@ -144,4 +144,27 @@ describe('ChatGateway — WebSocket methods', () => {
       messageType: 'system',
     }));
   });
+
+  it('4.6 — handleConnection: відхиляє при невалідному JWT', async () => {
+    mockJwtService.verify.mockImplementation(() => { throw new Error('invalid'); });
+    const socket = createMockSocket();
+    await gateway.handleConnection(socket);
+    expect(socket.disconnect).toHaveBeenCalled();
+  });
+
+  it('4.7 — handleConnection: повторний вхід перезаписує сокет', async () => {
+    const su = (gateway as any).connectedUsers;
+    su.set('user-1', 'old-socket');
+    mockUserRepo.findOne.mockResolvedValue({ id: 'user-1', fullName: 'Test', isBlocked: false, isIdentityVerified: true });
+    const jwtMock = jest.spyOn(mockJwtService, 'verify').mockReturnValue({ sub: 'user-1' });
+    const socket = createMockSocket({ id: 'new-socket' });
+    mockChatRepo.createQueryBuilder = jest.fn().mockReturnValue({
+      innerJoin: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    });
+    await gateway.handleConnection(socket);
+    expect(su.get('user-1')).toBe('new-socket');
+    jwtMock.mockRestore();
+  });
 });
