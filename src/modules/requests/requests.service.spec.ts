@@ -480,4 +480,168 @@ describe('RequestsService', () => {
 
     expect(accessLogRepo.save).not.toHaveBeenCalled();
   });
+
+  // =====================================================================
+  // 6.8 — remove (видалення заявки)
+  // =====================================================================
+
+  it('6.8a — remove: власник видаляє заявку (в межах 10-хв)', async () => {
+    const req = createRequest({ creatorId: 'owner-id', status: RequestStatus.OPEN, createdAt: new Date() });
+    requestRepo.findOne.mockResolvedValue(req as any);
+    requestRepo.softDelete.mockResolvedValue({} as any);
+
+    const owner = createUser({ id: 'owner-id' });
+    await service.remove('req-1', owner as User);
+    expect(requestRepo.findOne).toHaveBeenCalled();
+  });
+
+  it('6.8b — remove: не-власник або не адмін ВІДХИЛЯЄТЬСЯ', async () => {
+    const req = createRequest({ creatorId: 'owner-id' });
+    requestRepo.findOne.mockResolvedValue(req as any);
+
+    const other = createUser({ id: 'other-id', systemRole: SystemRole.VOLUNTEER });
+    await expect(service.remove('req-1', other as User)).rejects.toThrow('Немає прав');
+  });
+
+  // =====================================================================
+  // 6.9 — markAsPendingReview (заявка очікує перевірки)
+  // =====================================================================
+
+  it('6.9 — markAsPendingReview: змінює статус заявки на PENDING_REVIEW', async () => {
+    const req = createRequest({ creatorId: 'owner-id', status: RequestStatus.OPEN });
+    requestRepo.findOne.mockResolvedValue(req as any);
+    requestRepo.save.mockResolvedValue({ ...req, status: RequestStatus.PENDING_REVIEW } as any);
+
+    const owner = createUser({ id: 'owner-id' });
+    const result = await service.markAsPendingReview('req-1', owner as User);
+
+    expect(result.status).toBe(RequestStatus.PENDING_REVIEW);
+  });
+
+  // =====================================================================
+  // 6.10 — findOne: детальний перегляд заявки
+  // =====================================================================
+
+  it('6.10a — findOne: власник бачить заявку', async () => {
+    const req = createRequest({ id: 'req-xyz', creatorId: 'owner-id' });
+    const mockGetOne = jest.fn().mockResolvedValue(req);
+    requestRepo.createQueryBuilder.mockReturnValue({
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getOne: mockGetOne,
+    } as any);
+
+    const owner = createUser({ id: 'owner-id' });
+    const result = await service.findOne('req-xyz', owner as User);
+
+    expect(result).toBeDefined();
+    expect(result.id).toBe('req-xyz');
+  });
+
+  it('6.10b — findOne: не знайдено → 404', async () => {
+    const mockGetOne = jest.fn().mockResolvedValue(null);
+    requestRepo.createQueryBuilder.mockReturnValue({
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getOne: mockGetOne,
+    } as any);
+
+    const user = createUser();
+    await expect(service.findOne('nonexistent', user as User)).rejects.toThrow(
+      'не знайдено',
+    );
+  });
+
+  // =====================================================================
+  // 6.11 — findAll з фільтрами
+  // =====================================================================
+
+  it('6.11 — findAll: повертає заявки з базовими фільтрами', async () => {
+    const mockQb: any = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      innerJoinAndSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      limit: jest.fn().mockReturnThis(),
+      offset: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    };
+    requestRepo.createQueryBuilder.mockReturnValue(mockQb);
+
+    const dto = { page: 1, limit: 10 };
+    const user = createUser();
+
+    const result = await service.findAll(dto as any, user as User);
+
+    expect(Array.isArray(result)).toBe(true);
+  });
+
+  // =====================================================================
+  // 6.12 — saveRequest / unsaveRequest / getSavedRequests
+  // =====================================================================
+
+  it('6.12a — saveRequest: зберігає заявку в обране', async () => {
+    savedRequestRepo.findOne.mockResolvedValue(null);
+    savedRequestRepo.save.mockResolvedValue({} as any);
+
+    await service.saveRequest('req-1', 'user-1');
+
+    expect(savedRequestRepo.save).toHaveBeenCalled();
+  });
+
+  it('6.12b — unsaveRequest: видаляє з обраного', async () => {
+    savedRequestRepo.delete.mockResolvedValue({} as any);
+
+    await service.unsaveRequest('req-1', 'user-1');
+
+    expect(savedRequestRepo.delete).toHaveBeenCalledWith({ requestId: 'req-1', userId: 'user-1' });
+  });
+
+  it('6.12c — getSavedRequests: повертає збережені заявки з limit/offset', async () => {
+    const savedItems = [
+      { id: 'saved-1', requestId: 'req-1', request: createRequest({ id: 'req-1' }) },
+    ];
+    savedRequestRepo.find.mockResolvedValue(savedItems as any);
+
+    const result = await service.getSavedRequests('user-1', 50, 0);
+
+    expect(result).toHaveLength(1);
+    expect(savedRequestRepo.find).toHaveBeenCalledWith(expect.any(Object));
+  });
+
+  it('6.12d — getSavedRequestIds: повертає масив ID збережених заявок', async () => {
+    savedRequestRepo.find.mockResolvedValue([
+      { requestId: 'req-1' },
+      { requestId: 'req-2' },
+    ] as any);
+
+    const result = await service.getSavedRequestIds('user-1');
+
+    expect(result).toEqual(['req-1', 'req-2']);
+  });
+
+  // =====================================================================
+  // 6.13 — update (оновлення заявки)
+  // =====================================================================
+
+  it('6.13a — update: власник оновлює заявку', async () => {
+    const req = createRequest({ id: 'req-1', creatorId: 'owner-id' });
+    requestRepo.findOne.mockResolvedValue(req as any);
+    requestRepo.save.mockResolvedValue({ ...req, title: 'Оновлена заявка' } as any);
+
+    const owner = createUser({ id: 'owner-id' });
+    const result = await service.update('req-1', { title: 'Оновлена заявка' } as any, owner as User);
+
+    expect(result.title).toBe('Оновлена заявка');
+  });
+
+  it('6.13b — update: не-власник ВІДХИЛЯЄТЬСЯ', async () => {
+    const req = createRequest({ id: 'req-1', creatorId: 'owner-id' });
+    requestRepo.findOne.mockResolvedValue(req as any);
+
+    const other = createUser({ id: 'other-id' });
+    await expect(service.update('req-1', { title: 'New' } as any, other as User)).rejects.toThrow('Немає прав');
+  });
 });

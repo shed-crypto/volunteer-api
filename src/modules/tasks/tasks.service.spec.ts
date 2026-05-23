@@ -559,4 +559,157 @@ describe('TasksService — life cycle methods', () => {
 
     expect(result.status).toBe(TaskStatus.TODO);
   });
+
+  // ------------------------------------------------------
+  // 2.9 — renewTask: забороняє відновлення не-CANCELLED
+  // ------------------------------------------------------
+  it('2.9 — renewTask: відхиляє відновлення TODO задачі', async () => {
+    const task = createTask({
+      status: TaskStatus.TODO,
+      request: { id: 'req-1', creatorId: 'creator-id' } as any,
+    });
+    mockTaskRepo.findOne.mockResolvedValue(task);
+
+    const admin = createUser({ id: 'admin-id', systemRole: SystemRole.ADMIN });
+    await expect(service.renewTask('task-1', admin as User))
+      .rejects.toThrow('не скасована');
+  });
+
+  // ------------------------------------------------------
+  // 2.10 — updateAssignmentStatus: EN_ROUTE
+  // ------------------------------------------------------
+  it('2.10 — updateAssignmentStatus: змінює статус на EN_ROUTE', async () => {
+    const assignment = {
+      id: 'assgn-5',
+      taskId: 'task-1',
+      userId: 'vol-1',
+      status: AssignmentStatus.ASSIGNED,
+    };
+    mockAssignmentRepo.findOne.mockResolvedValue(assignment);
+    mockAssignmentRepo.save.mockResolvedValue({ ...assignment, status: AssignmentStatus.EN_ROUTE });
+
+    const result = await service.updateAssignmentStatus('task-1', AssignmentStatus.EN_ROUTE, createUser() as User);
+
+    expect(result.status).toBe(AssignmentStatus.EN_ROUTE);
+  });
+
+  // ------------------------------------------------------
+  // 2.11 — updateAssignmentStatus: ON_SITE
+  // ------------------------------------------------------
+  it('2.11 — updateAssignmentStatus: змінює статус на ON_SITE', async () => {
+    const assignment = {
+      id: 'assgn-6',
+      taskId: 'task-1',
+      userId: 'vol-1',
+      status: AssignmentStatus.EN_ROUTE,
+    };
+    mockAssignmentRepo.findOne.mockResolvedValue(assignment);
+    mockAssignmentRepo.save.mockResolvedValue({ ...assignment, status: AssignmentStatus.ON_SITE });
+
+    const result = await service.updateAssignmentStatus('task-1', AssignmentStatus.ON_SITE, createUser() as User);
+
+    expect(result.status).toBe(AssignmentStatus.ON_SITE);
+  });
+
+  // ------------------------------------------------------
+  // 2.12 — updateAssignmentStatus: відхиляє невалідний статус
+  // ------------------------------------------------------
+  it('2.12 — updateAssignmentStatus: відхиляє COMPLETED статус', async () => {
+    await expect(
+      service.updateAssignmentStatus('task-1', AssignmentStatus.COMPLETED, createUser() as User),
+    ).rejects.toThrow('Дозволені статуси');
+  });
+
+  // ------------------------------------------------------
+  // 2.13 — updateAssignmentStatus: відхиляє WITHDRAWN призначення
+  // ------------------------------------------------------
+  it('2.13 — updateAssignmentStatus: відхиляє зміну для WITHDRAWN', async () => {
+    const assignment = {
+      id: 'assgn-7',
+      taskId: 'task-1',
+      userId: 'vol-1',
+      status: AssignmentStatus.WITHDRAWN,
+    };
+    mockAssignmentRepo.findOne.mockResolvedValue(assignment);
+
+    await expect(
+      service.updateAssignmentStatus('task-1', AssignmentStatus.EN_ROUTE, createUser() as User),
+    ).rejects.toThrow('завершеного або скасованого');
+  });
+
+  // ------------------------------------------------------
+  // 2.14 — updateTaskStatusAdmin: адмін примусово змінює статус
+  // ------------------------------------------------------
+  it('2.14 — updateTaskStatusAdmin: примусово змінює статус задачі', async () => {
+    const task = createTask({ status: TaskStatus.TODO });
+    mockTaskRepo.findOne.mockResolvedValue(task);
+    mockTaskRepo.save.mockResolvedValue({ ...task, status: TaskStatus.IN_PROGRESS });
+
+    const admin = createUser({ id: 'admin-id', systemRole: SystemRole.ADMIN });
+    const result = await service.updateTaskStatusAdmin('task-1', TaskStatus.IN_PROGRESS, admin as User);
+
+    expect(result.status).toBe(TaskStatus.IN_PROGRESS);
+  });
+
+  // ------------------------------------------------------
+  // 2.15 — updateTaskStatusAdmin: не-адмін відхиляється
+  // ------------------------------------------------------
+  it('2.15 — updateTaskStatusAdmin: забороняє не-адміну змінювати статус', async () => {
+    const volunteer = createUser();
+    await expect(
+      service.updateTaskStatusAdmin('task-1', TaskStatus.DONE, volunteer as User),
+    ).rejects.toThrow('адміністратор');
+  });
+
+  // ------------------------------------------------------
+  // 2.16 — returnToProgress: повертає PENDING_REVIEW → IN_PROGRESS
+  // ------------------------------------------------------
+  it('2.16 — returnToProgress: повертає PENDING_REVIEW в IN_PROGRESS', async () => {
+    const task = createTask({
+      status: TaskStatus.PENDING_REVIEW,
+      request: { id: 'req-1', creatorId: 'creator-id' } as any,
+      assignments: [
+        { userId: 'vol-1', status: AssignmentStatus.ASSIGNED } as any,
+      ],
+    });
+    mockTaskRepo.findOne.mockResolvedValue(task);
+    mockTaskRepo.save.mockResolvedValue({ ...task, status: TaskStatus.IN_PROGRESS });
+    mockAssignmentRepo.update.mockResolvedValue({});
+
+    const result = await service.returnToProgress('task-1', createUser() as User);
+
+    expect(result.status).toBe(TaskStatus.IN_PROGRESS);
+  });
+
+  // ------------------------------------------------------
+  // 2.17 — cancelTask: координатор може скасувати
+  // ------------------------------------------------------
+  it('2.17 — cancelTask: координатор може скасувати задачу', async () => {
+    const task = createTask({
+      status: TaskStatus.TODO,
+      request: { id: 'req-1', creatorId: 'creator-id' } as any,
+    });
+    mockTaskRepo.findOne.mockResolvedValue(task);
+    mockTaskRepo.save.mockResolvedValue({ ...task, status: TaskStatus.CANCELLED });
+
+    const coordinator = createUser({ id: 'coord-id', systemRole: SystemRole.COORDINATOR });
+    const result = await service.cancelTask('task-1', coordinator as User);
+
+    expect(result.status).toBe(TaskStatus.CANCELLED);
+  });
+
+  // ------------------------------------------------------
+  // 2.18 — cancelTask: звичайний волонтер не може скасувати
+  // ------------------------------------------------------
+  it('2.18 — cancelTask: волонтер не може скасувати чужу задачу', async () => {
+    const task = createTask({
+      status: TaskStatus.TODO,
+      request: { id: 'req-1', creatorId: 'another-user' } as any,
+    });
+    mockTaskRepo.findOne.mockResolvedValue(task);
+
+    const volunteer = createUser({ id: 'random-vol' });
+    await expect(service.cancelTask('task-1', volunteer as User))
+      .rejects.toThrow('Немає прав');
+  });
 });
