@@ -17,14 +17,22 @@ export class RemoveExifMiddleware implements NestMiddleware {
 
     for (const file of files) {
       if (file.mimetype.startsWith('image/')) {
-        const tempPath = file.path + '.tmp';
-        await sharp(file.path)
-          .rotate() // автоповорот за EXIF Orientation
-          .withMetadata({ exif: {} }) // видалити всі EXIF
-          .toFile(tempPath);
+        try {
+          // Ресайз до 400px + видалення EXIF
+          const tempPath = file.path + '.tmp';
+          await sharp(file.path)
+            .rotate() // автоповорот за EXIF Orientation
+            .resize(400, 400, { fit: 'cover', withoutEnlargement: true })
+            .jpeg({ quality: 80 })
+            .withMetadata({ exif: {} }) // видалити всі EXIF
+            .toFile(tempPath);
 
-        fs.unlinkSync(file.path);
-        fs.renameSync(tempPath, file.path);
+          fs.unlinkSync(file.path);
+          fs.renameSync(tempPath, file.path);
+        } catch (err) {
+          console.error('[RemoveExifMiddleware] sharp processing failed:', err);
+          // Якщо sharp не вдалося — продовжуємо з оригінальним файлом
+        }
       }
     }
 

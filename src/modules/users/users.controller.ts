@@ -1,9 +1,13 @@
 import {
   Controller, Get, Post, Patch, Delete, Param,
   Body, UseGuards, ParseUUIDPipe, Query, BadRequestException,
-  HttpCode, HttpStatus,
+  HttpCode, HttpStatus, UseInterceptors, UploadedFile,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { existsSync, mkdirSync } from 'fs';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { UsersService } from './users.service';
 import { JwtAuthGuard, RolesGuard, Roles } from '@common/guards/jwt-auth.guard';
@@ -195,6 +199,41 @@ export class UsersController {
     @Param('id', ParseUUIDPipe) userId: string,
   ): Promise<Vehicle[]> {
     return this.usersService.getUserVehicles(userId);
+  }
+
+  // ─── Аватарка ─────────────────────────────────────────────────────────────
+  @Post('me/avatar')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: (req, file, cb) => {
+        const dir = './uploads/avatars';
+        if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+        cb(null, dir);
+      },
+      filename: (req, file, cb) => {
+        const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
+        cb(null, `${randomName}${extname(file.originalname)}`);
+      },
+    }),
+    fileFilter: (req, file, cb) => {
+      if (!file.mimetype?.startsWith('image/')) {
+        cb(new BadRequestException('Можна завантажувати тільки зображення'), false);
+        return;
+      }
+      cb(null, true);
+    },
+  }))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+  @ApiOperation({ summary: 'Завантажити аватарку (тільки зображення)' })
+  async uploadAvatar(
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: User,
+  ): Promise<{ url: string }> {
+    if (!file) throw new BadRequestException('Файл не передано');
+    const avatarUrl = `/uploads/avatars/${file.filename}`;
+    await this.usersService.updateAvatar(user.id, avatarUrl);
+    return { url: avatarUrl };
   }
 
   @Post('me/vehicles')

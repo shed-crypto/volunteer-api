@@ -253,6 +253,11 @@ export class UsersService {
     return this.vehicleRepo.find({ where: { userId } });
   }
 
+  async updateAvatar(userId: string, avatarUrl: string): Promise<User> {
+    await this.userRepo.update(userId, { avatarUrl });
+    return this.findById(userId);
+  }
+
   async searchUsers(query: string): Promise<Partial<User>[]> {
     return this.userRepo
       .createQueryBuilder('user')
@@ -271,7 +276,7 @@ export class UsersService {
 
     const user = await this.userRepo.findOne({
       where: { id: userId },
-      select: ['id', 'clearanceLevel', 'trustScore', 'frontlineGrantedByAdmin'],
+      select: ['id', 'clearanceLevel', 'trustScore', 'frontlineGrantedByAdmin', 'isEmailVerified'],
     });
     if (!user) return;
 
@@ -282,9 +287,12 @@ export class UsersService {
 
     let newClearance: ClearanceLevel;
 
-    // FRONTLINE — тільки ручне підтвердження адміном
-    // Автоматично максимум до INTERNATIONAL
-    if (activeCount >= FRONTLINE_VOUCHES_REQUIRED) {
+    // FRONTLINE — 3+ поручителів + підтверджена пошта
+    // INTERNATIONAL — 1+ поручитель
+    // LOCAL — 0 поручителів
+    if (activeCount >= FRONTLINE_VOUCHES_REQUIRED && user.isEmailVerified) {
+      newClearance = ClearanceLevel.FRONTLINE;
+    } else if (activeCount >= FRONTLINE_VOUCHES_REQUIRED) {
       newClearance = ClearanceLevel.INTERNATIONAL;
     } else if (activeCount >= 1) {
       newClearance = ClearanceLevel.INTERNATIONAL;
@@ -302,7 +310,7 @@ export class UsersService {
         clearanceLevel: newClearance,
         trustScore: Math.min(
           100,
-          user.trustScore + (newClearance === ClearanceLevel.INTERNATIONAL ? 5 : 0),
+          user.trustScore + (newClearance === ClearanceLevel.INTERNATIONAL ? 5 : newClearance === ClearanceLevel.FRONTLINE ? 10 : 0),
         ),
       });
     }

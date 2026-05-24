@@ -645,6 +645,224 @@ describe('RequestsService', () => {
     await expect(service.update('req-1', { title: 'New' } as any, other as User)).rejects.toThrow('Немає прав');
   });
 
-  // (findOne already covered in 6.10)
-  // (remove already covered in 6.8)
+  // =====================================================================
+  // 6.14 - updateAdditionalInfo
+  // =====================================================================
+
+  it('6.14a - updateAdditionalInfo: owner updates within 30 min', async () => {
+    const req = createRequest({
+      creatorId: 'owner-id',
+      additionalInfo: [{ id: 'info-1', text: 'Old text', attachments: [], createdAt: new Date() }],
+    });
+    requestRepo.findOne.mockResolvedValue(req as any);
+    requestRepo.save.mockResolvedValue(req as any);
+
+    const owner = createUser({ id: 'owner-id' });
+    const result = await service.updateAdditionalInfo('req-1', 'info-1', { text: 'Updated text', attachments: [] }, owner as User);
+
+    expect(result.additionalInfo[0].text).toBe('Updated text');
+    expect(result.additionalInfo[0].updatedAt).toBeDefined();
+  });
+
+  it('6.14b - updateAdditionalInfo: info not found', async () => {
+    const req = createRequest({
+      creatorId: 'owner-id',
+      additionalInfo: [{ id: 'info-1', text: 'Old text', attachments: [], createdAt: new Date() }],
+    });
+    requestRepo.findOne.mockResolvedValue(req as any);
+
+    const owner = createUser({ id: 'owner-id' });
+    await expect(service.updateAdditionalInfo('req-1', 'nonexistent', { text: 'Updated text', attachments: [] }, owner as User))
+      .rejects.toThrow('Доповнення не знайдено');
+  });
+
+  it('6.14c - updateAdditionalInfo: admin can edit after 30 min', async () => {
+    const oldDate = new Date(Date.now() - 40 * 60 * 1000); // 40 min ago
+    const req = createRequest({
+      creatorId: 'owner-id',
+      additionalInfo: [{ id: 'info-1', text: 'Old text', attachments: [], createdAt: oldDate }],
+    });
+    requestRepo.findOne.mockResolvedValue(req as any);
+    requestRepo.save.mockResolvedValue(req as any);
+
+    const admin = createUser({ id: 'admin-id', systemRole: SystemRole.ADMIN });
+    const result = await service.updateAdditionalInfo('req-1', 'info-1', { text: 'Admin updated', attachments: [] }, admin as User);
+
+    expect(result.additionalInfo[0].text).toBe('Admin updated');
+  });
+
+  it('6.14d - updateAdditionalInfo: non-admin rejected after 30 min', async () => {
+    const oldDate = new Date(Date.now() - 40 * 60 * 1000); // 40 min ago
+    const req = createRequest({
+      creatorId: 'owner-id',
+      additionalInfo: [{ id: 'info-1', text: 'Old text', attachments: [], createdAt: oldDate }],
+    });
+    requestRepo.findOne.mockResolvedValue(req as any);
+
+    const owner = createUser({ id: 'owner-id' });
+    await expect(service.updateAdditionalInfo('req-1', 'info-1', { text: 'Updated', attachments: [] }, owner as User))
+      .rejects.toThrow('Редагування можливе лише протягом 30 хвилин');
+  });
+
+  // =====================================================================
+  // 6.15 - removeAdditionalInfo
+  // =====================================================================
+
+  it('6.15a - removeAdditionalInfo: owner removes within 30 min', async () => {
+    const req = createRequest({
+      creatorId: 'owner-id',
+      additionalInfo: [{ id: 'info-1', text: 'To remove', attachments: [], createdAt: new Date() }],
+    });
+    requestRepo.findOne.mockResolvedValue(req as any);
+    requestRepo.save.mockResolvedValue({ ...req, additionalInfo: [] } as any);
+
+    const owner = createUser({ id: 'owner-id' });
+    const result = await service.removeAdditionalInfo('req-1', 'info-1', owner as User);
+
+    expect(result.additionalInfo).toHaveLength(0);
+  });
+
+  it('6.15b - removeAdditionalInfo: info not found', async () => {
+    const req = createRequest({
+      creatorId: 'owner-id',
+      additionalInfo: [{ id: 'info-1', text: 'Old text', attachments: [], createdAt: new Date() }],
+    });
+    requestRepo.findOne.mockResolvedValue(req as any);
+
+    const owner = createUser({ id: 'owner-id' });
+    await expect(service.removeAdditionalInfo('req-1', 'nonexistent', owner as User))
+      .rejects.toThrow('Доповнення не знайдено');
+  });
+
+  it('6.15c - removeAdditionalInfo: non-owner rejected', async () => {
+    const req = createRequest({
+      creatorId: 'owner-id',
+      additionalInfo: [{ id: 'info-1', text: 'Old text', attachments: [], createdAt: new Date() }],
+    });
+    requestRepo.findOne.mockResolvedValue(req as any);
+
+    const other = createUser({ id: 'other-id' });
+    await expect(service.removeAdditionalInfo('req-1', 'info-1', other as User))
+      .rejects.toThrow('Тільки власник');
+  });
+
+  it('6.15d - removeAdditionalInfo: rejected after 30 min for non-admin', async () => {
+    const oldDate = new Date(Date.now() - 40 * 60 * 1000); // 40 min ago
+    const req = createRequest({
+      creatorId: 'owner-id',
+      additionalInfo: [{ id: 'info-1', text: 'Old text', attachments: [], createdAt: oldDate }],
+    });
+    requestRepo.findOne.mockResolvedValue(req as any);
+
+    const owner = createUser({ id: 'owner-id' });
+    await expect(service.removeAdditionalInfo('req-1', 'info-1', owner as User))
+      .rejects.toThrow('Видалення можливе лише протягом 30 хвилин');
+  });
+
+  // =====================================================================
+  // 6.16 - getAccessLogs
+  // =====================================================================
+
+  it('6.16a - getAccessLogs: returns logs with filters', async () => {
+    const mockQb: any = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([
+        { id: 'log-1', userId: 'user-1', requestId: 'req-1', action: 'view_detail', createdAt: new Date() },
+      ]),
+    };
+    accessLogRepo.createQueryBuilder.mockReturnValue(mockQb);
+
+    const result = await service.getAccessLogs({
+      requestId: 'req-1',
+      userId: 'user-1',
+      action: 'view_detail',
+      from: '2025-01-01',
+      to: '2025-12-31',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].userId).toBe('user-1');
+    expect(result[0].requestId).toBe('req-1');
+  });
+
+  it('6.16b - getAccessLogs: returns empty when no logs', async () => {
+    const mockQb: any = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      getMany: jest.fn().mockResolvedValue([]),
+    };
+    accessLogRepo.createQueryBuilder.mockReturnValue(mockQb);
+
+    const result = await service.getAccessLogs({ limit: 10, offset: 0 });
+
+    expect(result).toHaveLength(0);
+  });
+
+  // =====================================================================
+  // 6.17 - getRequestsWithPriority
+  // =====================================================================
+
+  it('6.17a - getRequestsWithPriority: with coordinates orders by distance', async () => {
+    requestRepo.query.mockResolvedValue([{ id: 'req-1', title: 'Near' }, { id: 'req-2', title: 'Far' }]);
+    const mockTaskQb: any = {
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      groupBy: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue([]),
+    };
+    taskRepo.createQueryBuilder.mockReturnValue(mockTaskQb);
+
+    const result = await service.getRequestsWithPriority({
+      userLat: 50.45,
+      userLng: 30.52,
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(result).toHaveLength(2);
+    expect(requestRepo.query).toHaveBeenCalled();
+  });
+
+  it('6.17b - getRequestsWithPriority: without coordinates returns raw SQL results', async () => {
+    requestRepo.query.mockResolvedValue([{ id: 'req-3', title: 'No coords' }]);
+    const mockTaskQb: any = {
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      groupBy: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue([]),
+    };
+    taskRepo.createQueryBuilder.mockReturnValue(mockTaskQb);
+
+    const result = await service.getRequestsWithPriority({ status: 'OPEN', limit: 5, offset: 0 });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe('req-3');
+  });
+
+  // =====================================================================
+  // 6.18 - getMyRequests
+  // =====================================================================
+
+  it('6.18a - getMyRequests: returns requests with total count', async () => {
+    requestRepo.findAndCount.mockResolvedValue([
+      [createRequest({ id: 'req-1', title: 'My request' })],
+      1,
+    ]);
+
+    const result = await service.getMyRequests('creator-id', { limit: 10, offset: 0 });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].title).toBe('My request');
+    expect(result[0]._meta.total).toBe(1);
+  });
 });

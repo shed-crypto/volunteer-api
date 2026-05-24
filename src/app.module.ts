@@ -100,6 +100,7 @@ export class AppModule implements NestModule {
         { path: 'tasks/:taskId/reports', method: RequestMethod.POST },
         { path: 'chats/:id/messages', method: RequestMethod.POST },
         { path: 'messages/:id/attachments', method: RequestMethod.PATCH },
+        { path: 'users/me/avatar', method: RequestMethod.POST },
       );
   }
 }
