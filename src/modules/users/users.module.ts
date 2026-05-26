@@ -5,10 +5,11 @@ import { Vehicle } from './entities/vehicle.entity';
 import { TrustVouch } from './entities/trust-vouch.entity';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
+import { UsersAvatarController } from './users-avatar.controller';
 
 @Module({
   imports: [TypeOrmModule.forFeature([User, Vehicle, TrustVouch])],
-  controllers: [UsersController],
+  controllers: [UsersAvatarController, UsersController],
   providers: [UsersService],
   exports: [UsersService, TypeOrmModule],
 })

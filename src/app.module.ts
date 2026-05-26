@@ -23,9 +23,6 @@ import { NotificationsModule } from '@modules/notifications/notifications.module
 import { EmailModule } from '@modules/email/email.module';
 import { TaskReportsModule } from '@modules/task-reports/task-reports.module';
 
-// ─── Middleware ────────────────────────────────────────────────────────────────
-import { RemoveExifMiddleware } from '@common/middleware/remove-exif.middleware';
-
 @Module({
   imports: [
     // ─── Глобальна конфігурація (читає .env) ──────────────────────────────
@@ -91,16 +88,9 @@ import { RemoveExifMiddleware } from '@common/middleware/remove-exif.middleware'
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
-    consumer
-      .apply(RemoveExifMiddleware)
-      .forRoutes(
-        { path: 'requests', method: RequestMethod.POST },
-        { path: 'requests/:id', method: RequestMethod.PATCH },
-        { path: 'requests/:id/add-info', method: RequestMethod.PATCH },
-        { path: 'tasks/:taskId/reports', method: RequestMethod.POST },
-        { path: 'chats/:id/messages', method: RequestMethod.POST },
-        { path: 'messages/:id/attachments', method: RequestMethod.PATCH },
-        { path: 'users/me/avatar', method: RequestMethod.POST },
-      );
+    // NOTE: RemoveExifMiddleware видалено — перенесено в RemoveExifInterceptor (interceptor).
+    // Middleware виконується ДО FileInterceptor (multer), тому req.file на етапі middleware
+    // ще порожній. Interceptor спрацьовує після multer, тому має доступ до req.file.
+    // Тепер RemoveExifInterceptor застосовується безпосередньо в контролерах через @UseInterceptors.
   }
 }

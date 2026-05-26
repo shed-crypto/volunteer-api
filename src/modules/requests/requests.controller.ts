@@ -4,6 +4,7 @@ import {
   ParseUUIDPipe, HttpCode, HttpStatus, UseInterceptors, UploadedFiles,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { RemoveExifInterceptor } from '@common/interceptors/remove-exif.interceptor';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiResponse, ApiConsumes } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { diskStorage } from 'multer';
@@ -42,7 +43,7 @@ export class RequestsController {
         cb(null, `${unique}${extname(file.originalname)}`);
       },
     }),
-  }))
+  }), RemoveExifInterceptor)
   create(
     @Body() dto: CreateRequestDto,
     @UploadedFiles() files: Array<Express.Multer.File>,
@@ -140,7 +141,7 @@ export class RequestsController {
         cb(null, `${unique}${extname(file.originalname)}`);
       },
     }),
-  }))
+  }), RemoveExifInterceptor)
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRequestDto,
@@ -166,7 +167,7 @@ export class RequestsController {
         cb(null, `${unique}${extname(file.originalname)}`);
       },
     }),
-  }))
+  }), RemoveExifInterceptor)
   addInfo(
     @Param('id') id: string,
     @Body() dto: AddInfoRequestDto,
@@ -192,7 +193,7 @@ export class RequestsController {
         cb(null, `${unique}${extname(file.originalname)}`);
       },
     }),
-  }))
+  }), RemoveExifInterceptor)
   updateAdditionalInfo(
     @Param('id') id: string,
     @Param('infoId') infoId: string,

@@ -3,6 +3,7 @@ import {
   UseGuards, Request, UseInterceptors, UploadedFiles, NotFoundException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
+import { RemoveExifInterceptor } from '@common/interceptors/remove-exif.interceptor';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
@@ -33,6 +34,7 @@ export class TaskReportsController {
       storage: reportStorage,
       limits: { fileSize: 10 * 1024 * 1024 }, // 10 МБ на файл
     }),
+    RemoveExifInterceptor,
   )
   async create(
     @Param('taskId') taskId: string,

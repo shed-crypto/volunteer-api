@@ -4,11 +4,15 @@ import {
   ParseUUIDPipe,
   HttpCode, HttpStatus, Body,
   UseInterceptors, UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { RemoveExifInterceptor } from '@common/interceptors/remove-exif.interceptor';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { IsUUID, IsOptional, IsString } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -60,6 +64,18 @@ const chatStorage = diskStorage({
   },
 });
 
+const avatarStorage = diskStorage({
+  destination: (_req, _file, cb) => {
+    const dir = 'uploads/avatars';
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    cb(null, dir);
+  },
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${unique}${extname(file.originalname)}`);
+  },
+});
+
 @ApiTags('Чати')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
@@ -68,6 +84,8 @@ export class ChatController {
   constructor(
     private readonly chatService: ChatService,
     private readonly chatGateway: ChatGateway,
+    @InjectRepository(User)
+    private readonly userRepo: Repository<User>,
   ) {}
 
   @Get()
@@ -83,6 +101,32 @@ export class ChatController {
     @CurrentUser() user: User,
   ): Promise<Chat> {
     return this.chatService.getOrCreateDirectChat(user, dto.targetUserId);
+  }
+
+  @Post('avatar')
+  @ApiOperation({ summary: 'Завантажити аватарку користувача' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: avatarStorage,
+      limits: { fileSize: 10 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype?.startsWith('image/')) {
+          cb(new BadRequestException('Only images can be uploaded'), false);
+          return;
+        }
+        cb(null, true);
+      },
+    }),
+    RemoveExifInterceptor,
+  )
+  async uploadAvatar(
+    @UploadedFile() file: Express.Multer.File,
+    @CurrentUser() user: User,
+  ): Promise<{ url: string }> {
+    if (!file) throw new BadRequestException('File was not provided');
+    const avatarUrl = `/uploads/avatars/${file.filename}`;
+    await this.userRepo.update(user.id, { avatarUrl });
+    return { url: avatarUrl };
   }
 
   @Get(':chatId/messages')
@@ -140,20 +184,13 @@ export class ChatController {
       storage: chatStorage,
       limits: { fileSize: 25 * 1024 * 1024 }, // 25 МБ
     }),
+    RemoveExifInterceptor,
   )
   async uploadChatFile(
     @Param('chatId', ParseUUIDPipe) chatId: string,
     @UploadedFile() file: Express.Multer.File,
   ): Promise<{ url: string; name: string; mimeType: string }> {
-    if (file.mimetype.startsWith('image/')) {
-      const sharp = require('sharp');
-      const buffer = await sharp(file.path)
-        .rotate()
-        .withMetadata({})
-        .toBuffer();
-      require('fs').writeFileSync(file.path, buffer);
-    }
-    
+    // NOTE: EXIF видалення та ресайз виконує RemoveExifInterceptor вище
     return {
       url: `/uploads/chat/${file.filename}`,
       name: file.originalname,

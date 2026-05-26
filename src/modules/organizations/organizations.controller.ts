@@ -5,6 +5,7 @@ import {
   UseInterceptors, UploadedFile, BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { RemoveExifInterceptor } from '@common/interceptors/remove-exif.interceptor';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { existsSync, mkdirSync } from 'fs';
@@ -263,7 +264,7 @@ export class OrganizationsController {
       filename: (req, file, cb) => cb(null, randomFileName(file.originalname)),
     }),
     fileFilter: imageFileFilter,
-  }))
+  }), RemoveExifInterceptor)
   @ApiConsumes('multipart/form-data')
   @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
   async uploadHubMedia(
@@ -390,7 +391,7 @@ export class OrganizationsController {
       filename: (req, file, cb) => cb(null, randomFileName(file.originalname)),
     }),
     fileFilter: imageFileFilter,
-  }))
+  }), RemoveExifInterceptor)
   @ApiConsumes('multipart/form-data')
   @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
   async uploadLogo(@Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File) {
@@ -409,7 +410,7 @@ export class OrganizationsController {
       filename: (req, file, cb) => cb(null, randomFileName(file.originalname)),
     }),
     fileFilter: imageFileFilter,
-  }))
+  }), RemoveExifInterceptor)
   @ApiConsumes('multipart/form-data')
   @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
   async uploadBanner(@Param('id', ParseUUIDPipe) id: string, @UploadedFile() file: Express.Multer.File) {
