@@ -57,44 +57,6 @@ export class UsersController {
     return this.usersService.findAllForAdmin();
   }
 
-  @Post('avatar')
-  @UseInterceptors(
-    FileInterceptor('file', {
-      storage: diskStorage({
-        destination: (req, file, cb) => {
-          const dir = './uploads/avatars';
-          if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-          cb(null, dir);
-        },
-        filename: (req, file, cb) => {
-          const randomName = Array(32).fill(null).map(() => (Math.round(Math.random() * 16)).toString(16)).join('');
-          cb(null, `${randomName}${extname(file.originalname)}`);
-        },
-      }),
-      fileFilter: (req, file, cb) => {
-        if (!file.mimetype?.startsWith('image/')) {
-          cb(new BadRequestException('Only images can be uploaded'), false);
-          return;
-        }
-        cb(null, true);
-      },
-      limits: { fileSize: 10 * 1024 * 1024 },
-    }),
-    RemoveExifInterceptor,
-  )
-  @ApiConsumes('multipart/form-data')
-  @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
-  @ApiOperation({ summary: 'Upload avatar image' })
-  async uploadAvatarEarly(
-    @UploadedFile() file: Express.Multer.File,
-    @CurrentUser() user: User,
-  ): Promise<{ url: string }> {
-    if (!file) throw new BadRequestException('File was not provided');
-    const avatarUrl = `/uploads/avatars/${file.filename}`;
-    await this.usersService.updateAvatar(user.id, avatarUrl);
-    return { url: avatarUrl };
-  }
-
   @Get(':id')
   @ApiOperation({ summary: 'Профіль користувача' })
   findOne(@Param('id', ParseUUIDPipe) id: string): Promise<User> {
@@ -241,8 +203,7 @@ export class UsersController {
   }
 
   // ─── Аватарка ─────────────────────────────────────────────────────────────
-  // NOTE: шлях 'avatar' замість 'me/avatar' щоб уникнути конфлікту з :id параметром
-  @Post('avatar')
+  @Post('me/avatar')
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
