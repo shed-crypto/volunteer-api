@@ -68,6 +68,7 @@ export class RequestsController {
     @Query('creatorId') creatorId?: string,
     @Query('radiusKm') radiusKm?: number,
     @Query('excludeCreatorId') excludeCreatorId?: string,
+    @Query('managingOrganizationId') managingOrganizationId?: string,
     @CurrentUser() user?: User,
   ): Promise<any[]> {
     // REQUESTER бачить тільки свої заявки
@@ -97,6 +98,7 @@ export class RequestsController {
       category,
       creatorId,
       excludeCreatorId,
+      managingOrganizationId,
     });
   }
 

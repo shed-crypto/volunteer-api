@@ -483,8 +483,9 @@ export class RequestsService {
     category?: string;
     creatorId?: string;
     excludeCreatorId?: string;
+    managingOrganizationId?: string;
   }): Promise<any[]> {
-    const { userId, userLat, userLng, radiusKm, limit = 20, offset = 0, search, status, urgency, category, creatorId, excludeCreatorId } = params;
+    const { userId, userLat, userLng, radiusKm, limit = 20, offset = 0, search, status, urgency, category, creatorId, excludeCreatorId, managingOrganizationId } = params;
 
     // Якщо потрібно сортувати за відстанню - використовуємо raw query,
     // оскільки TypeORM .skip()/.take() дають помилку з об'єднаною aliasing
@@ -623,6 +624,10 @@ export class RequestsService {
         `(req.title ILIKE $${rawParams.length + 1} OR req.description ILIKE $${rawParams.length + 2})`,
       );
       rawParams.push(`%${search}%`, `%${search}%`);
+    }
+    if (managingOrganizationId) {
+      whereClauses.push(`req.managing_organization_id = $${rawParams.length + 1}`);
+      rawParams.push(managingOrganizationId);
     }
 
     const whereSQL = whereClauses.join(' AND ');
