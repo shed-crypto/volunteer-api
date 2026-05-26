@@ -142,5 +142,6 @@ export class AuthResponseDto {
     fullName: string;
     systemRole: SystemRole;
     clearanceLevel: string;
+    avatarUrl?: string;
   };
 }

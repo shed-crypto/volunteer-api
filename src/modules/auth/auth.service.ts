@@ -313,6 +313,7 @@ export class AuthService {
         fullName: user.fullName,
         systemRole: user.systemRole,
         clearanceLevel: user.clearanceLevel,
+        avatarUrl: user.avatarUrl,
       },
     };
   }
