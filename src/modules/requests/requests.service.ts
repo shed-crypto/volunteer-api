@@ -769,7 +769,7 @@ export class RequestsService {
     }]));
     return requests.map(r => ({
       ...r,
-      ...metaMap.get(r.id),
+      ...(metaMap.get(r.id) || {}),
     }));
   }
 
