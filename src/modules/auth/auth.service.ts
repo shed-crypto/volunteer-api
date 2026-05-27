@@ -21,6 +21,21 @@ import {
 } from './dto/auth.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 
+/**
+ * Конфігурація argon2id згідно з OWASP рекомендаціями.
+ * Argon2id — переможець PHC 2015, гібрид argon2i (side-channel resistance)
+ * та argon2d (GPU resistance).
+ */
+const ARGON2_OPTIONS = {
+  type: argon2.argon2id,
+  memoryCost: 19456,   // 19 MB
+  timeCost: 2,         // 2 ітерації
+  parallelism: 1,      // 1 потік
+};
+
+/** Термін дії email verification token — 48 годин */
+const EMAIL_VERIFICATION_TTL_HOURS = 48;
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -36,12 +51,17 @@ export class AuthService {
     const existing = await this.userRepository.findOne({
       where: { email: dto.email.toLowerCase() },
     });
+
     if (existing) {
       throw new ConflictException('Користувач з таким email вже існує');
     }
 
-    // Генеруємо токен підтвердження пошти
+    // Генеруємо токен підтвердження пошти з терміном дії 48 годин
     const emailVerificationToken = uuidv4();
+    const emailVerificationExpires = new Date();
+    emailVerificationExpires.setHours(
+      emailVerificationExpires.getHours() + EMAIL_VERIFICATION_TTL_HOURS,
+    );
 
     const user = this.userRepository.create({
       email: dto.email.toLowerCase(),
@@ -51,6 +71,7 @@ export class AuthService {
       systemRole: dto.systemRole,   // RegisterDto обмежує лише VOLUNTEER/REQUESTER
       isEmailVerified: false,
       emailVerificationToken,
+      emailVerificationExpires,
     });
 
     await this.userRepository.save(user);
@@ -111,9 +132,17 @@ export class AuthService {
       );
     }
 
+    // Перевіряємо термін дії токена
+    if (user.emailVerificationExpires && user.emailVerificationExpires < new Date()) {
+      throw new BadRequestException(
+        'Термін дії токена верифікації минув. Запитайте новий лист.',
+      );
+    }
+
     await this.userRepository.update(user.id, {
       isEmailVerified: true,
       emailVerificationToken: null,
+      emailVerificationExpires: null,
     });
 
     return { message: 'Email успішно підтверджено! Тепер ви можете використовувати всі функції.' };
@@ -133,10 +162,16 @@ export class AuthService {
       throw new BadRequestException('Пошта вже підтверджена');
     }
 
-    // Генеруємо новий токен (старий може бути протермінований)
+    // Генеруємо новий токен з новим терміном дії (старий може бути протермінований)
     const newToken = uuidv4();
+    const emailVerificationExpires = new Date();
+    emailVerificationExpires.setHours(
+      emailVerificationExpires.getHours() + EMAIL_VERIFICATION_TTL_HOURS,
+    );
+
     await this.userRepository.update(user.id, {
       emailVerificationToken: newToken,
+      emailVerificationExpires,
     });
 
     setImmediate(() => {
@@ -217,7 +252,7 @@ export class AuthService {
       throw new BadRequestException('Токен недійсний або протермінований');
     }
 
-    const hashedPassword = await argon2.hash(newPassword);
+    const hashedPassword = await argon2.hash(newPassword, ARGON2_OPTIONS);
 
     await this.userRepository.update(user.id, {
       passwordHash: hashedPassword,
@@ -241,9 +276,19 @@ export class AuthService {
       throw new UnauthorizedException('Доступ заборонено');
     }
 
-    const isRefreshValid = await argon2.verify(user.refreshTokenHash, refreshToken);
+    const isRefreshValid = await argon2.verify(
+      user.refreshTokenHash,
+      refreshToken,
+    );
+
     if (!isRefreshValid) {
-      throw new UnauthorizedException('Недійсний refresh token');
+      // 🚨 TOKEN FAMILY DETECTION:
+      // Якщо хтось намагається використати старий (вже замінений) refresh token,
+      // це означає що токен скомпрометований. Інвалідуємо всі сесії користувача.
+      await this.userRepository.update(user.id, { refreshTokenHash: null });
+      throw new UnauthorizedException(
+        'Недійсний refresh token. Всі активні сесії було завершено з міркувань безпеки.',
+      );
     }
 
     return this.generateTokens(user);
@@ -270,7 +315,7 @@ export class AuthService {
       throw new UnauthorizedException('Невірний старий пароль');
     }
 
-    const hashedPassword = await argon2.hash(dto.newPassword);
+    const hashedPassword = await argon2.hash(dto.newPassword, ARGON2_OPTIONS);
     await this.userRepository.update(user.id, {
       passwordHash: hashedPassword,
     });
@@ -291,7 +336,7 @@ export class AuthService {
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
         secret: process.env.JWT_SECRET,
-        expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as any,
+        expiresIn: (process.env.JWT_EXPIRES_IN || '15m') as any,
       }),
       this.jwtService.signAsync(payload, {
         secret: process.env.JWT_REFRESH_SECRET,
@@ -300,7 +345,7 @@ export class AuthService {
     ]);
 
     await this.userRepository.update(user.id, {
-      refreshTokenHash: await argon2.hash(refreshToken),
+      refreshTokenHash: await argon2.hash(refreshToken, ARGON2_OPTIONS),
     });
 
     return {

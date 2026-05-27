@@ -89,6 +89,17 @@ export class User extends BaseEntity {
   @Column({ name: 'is_email_verified', type: 'boolean', default: false })
   isEmailVerified: boolean;
 
+  /**
+   * Дата закінчення дії токена підтвердження email (48 годин з моменту реєстрації).
+   */
+  @Column({
+    name: 'email_verification_expires',
+    type: 'timestamp',
+    nullable: true,
+  })
+  @Exclude()
+  emailVerificationExpires: Date | null;
+
   // Адміністративна позначка: верифікація особи (фото документу + перевірка адміном)
   @Column({ name: 'is_identity_verified', type: 'boolean', default: false })
   isIdentityVerified: boolean;
@@ -197,7 +208,12 @@ export class User extends BaseEntity {
   @BeforeUpdate()
   async hashPassword() {
     if (this.passwordHash && !this.passwordHash.startsWith('$argon2')) {
-      this.passwordHash = await argon2.hash(this.passwordHash);
+      this.passwordHash = await argon2.hash(this.passwordHash, {
+        type: argon2.argon2id,
+        memoryCost: 19456,
+        timeCost: 2,
+        parallelism: 1,
+      });
     }
   }
 

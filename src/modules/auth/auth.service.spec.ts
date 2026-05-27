@@ -209,6 +209,7 @@ describe('AuthService', () => {
       expect(userRepo.update).toHaveBeenCalledWith(user.id, {
         isEmailVerified: true,
         emailVerificationToken: null,
+        emailVerificationExpires: null,
       });
     });
 
