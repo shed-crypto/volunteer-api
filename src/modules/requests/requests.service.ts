@@ -27,8 +27,8 @@ import { FindRequestsDto } from './dto/find-requests.dto';
   /** Радіус обфускування координат у метрах (з env або 3 км за замовчуванням) */
   const OBFUSCATION_RADIUS_M = parseInt(
     process.env.LOCATION_OBFUSCATION_RADIUS_M || '3000',
-    10,
-2  );
+    10
+  );
 
 // Проста хеш-функція djb2 для створення детермінованого зерна з UUID
 function getSeed(str: string): number {
