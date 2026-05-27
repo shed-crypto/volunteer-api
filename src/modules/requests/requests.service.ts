@@ -237,10 +237,12 @@ export class RequestsService {
     // Логування доступу для FRONTLINE заявок (крім власника)
     this.logAccess(request, requester, 'view_detail');
 
-    return {
+    const enriched = await this.enrichRequestMeta([{
       ...obfuscated,
       isSaved,
-    };
+    }], requester.id);
+
+    return enriched[0];
   }
 
   // ─── Оновлення ────────────────────────────────────────────────────────────
@@ -758,7 +760,7 @@ export class RequestsService {
       JOIN tasks t ON t.request_id = ri.id
       LEFT JOIN task_delegations td ON td.task_id = t.id AND td.is_accepted = true
       LEFT JOIN organizations org ON org.id = td.organization_id
-      LEFT JOIN task_assignments ta ON ta.task_id = t.id AND ta.user_id = $2 AND ta.status NOT IN ('WITHDRAWN', 'COMPLETED')
+      LEFT JOIN task_assignments ta ON ta.task_id = t.id AND ta.user_id = $2 AND ta.status NOT IN ('withdrawn', 'completed')
       LEFT JOIN organization_members om ON om.organization_id = td.organization_id AND om.user_id = $2
       GROUP BY ri.id`,
       [requestIds, userId],
