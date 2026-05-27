@@ -99,6 +99,8 @@ export class RequestsController {
       creatorId,
       excludeCreatorId,
       managingOrganizationId,
+      clearanceLevel: (user as any)?.clearanceLevel,
+      systemRole: (user as any)?.systemRole,
     });
   }
 

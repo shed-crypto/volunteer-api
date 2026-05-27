@@ -635,6 +635,13 @@ export class TasksService {
       relations: ['task', 'task.request'],
     });
     if (!delegation) throw new NotFoundException('Делегацію не знайдено');
+    // Prevent double acceptance by another organization
+    const alreadyAccepted = await this.delegationRepository.findOne({
+      where: { taskId, isAccepted: true },
+    });
+    if (alreadyAccepted && alreadyAccepted.organizationId !== organizationId) {
+      throw new ForbiddenException('Цей таск вже прийнято іншою організацією');
+    }
     delegation.isAccepted = true;
     const saved = await this.delegationRepository.save(delegation);
     // Автоматично оновлюємо managingOrganizationId заявки на прийняту організацію

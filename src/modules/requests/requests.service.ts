@@ -28,7 +28,7 @@ import { FindRequestsDto } from './dto/find-requests.dto';
   const OBFUSCATION_RADIUS_M = parseInt(
     process.env.LOCATION_OBFUSCATION_RADIUS_M || '3000',
     10,
-  );
+2  );
 
 // Проста хеш-функція djb2 для створення детермінованого зерна з UUID
 function getSeed(str: string): number {
@@ -484,8 +484,10 @@ export class RequestsService {
     creatorId?: string;
     excludeCreatorId?: string;
     managingOrganizationId?: string;
+    clearanceLevel?: ClearanceLevel;
+    systemRole?: SystemRole;
   }): Promise<any[]> {
-    const { userId, userLat, userLng, radiusKm, limit = 20, offset = 0, search, status, urgency, category, creatorId, excludeCreatorId, managingOrganizationId } = params;
+    const { userId, userLat, userLng, radiusKm, limit = 20, offset = 0, search, status, urgency, category, creatorId, excludeCreatorId, managingOrganizationId, clearanceLevel, systemRole } = params;
 
     // Якщо потрібно сортувати за відстанню - використовуємо raw query,
     // оскільки TypeORM .skip()/.take() дають помилку з об'єднаною aliasing
@@ -628,6 +630,10 @@ export class RequestsService {
     if (managingOrganizationId) {
       whereClauses.push(`req.managing_organization_id = $${rawParams.length + 1}`);
       rawParams.push(managingOrganizationId);
+    }
+    if (systemRole !== SystemRole.ADMIN) {
+      const userRank = this.getClearanceRank(clearanceLevel ?? ClearanceLevel.LOCAL);
+      whereClauses.push(`CASE req.required_clearance WHEN 'local' THEN 0 WHEN 'international' THEN 1 WHEN 'frontline' THEN 2 END <= ${userRank}`);
     }
 
     const whereSQL = whereClauses.join(' AND ');
