@@ -762,7 +762,7 @@ export class RequestsService {
       GROUP BY ri.id`,
       [requestIds, userId],
     );
-    const metaMap = new Map(metaRows.map(r => [r.request_id, {
+    const metaMap = new Map<string, any>(metaRows.map(r => [r.request_id, {
       delegatedOrgNames: r.org_names || [],
       isUserAssigned: r.is_user_assigned || false,
       isMyOrgDelegating: r.is_my_org_delegating || false,
