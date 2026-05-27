@@ -554,7 +554,7 @@ export class RequestsService {
         }
       }
 
-      return results.map((r: any) => ({
+      const _mapped = results.map((r: any) => ({
         id: r.id,
         status: r.status,
         title: r.title,
@@ -591,7 +591,7 @@ export class RequestsService {
         },
         distance: r.distance,
         taskCount: taskCounts.get(r.id) ?? 0,
-      }));
+      })); return this.enrichRequestMeta(_mapped, userId);
     }
 
     // Використовуємо raw SQL замість TypeORM query builder через баг з PostGIS geometry
@@ -698,7 +698,7 @@ export class RequestsService {
         }
       }
 
-      return results.map((r: any) => ({
+      const _mapped = results.map((r: any) => ({
         id: r.id,
         status: r.status,
         title: r.title,
@@ -734,13 +734,43 @@ export class RequestsService {
           citizenship: r.creator_citizenship,
         },
         taskCount: taskCounts.get(r.id) ?? 0,
-      }));
+      })); return this.enrichRequestMeta(_mapped, userId);
     } catch (err) {
       console.error('[DEBUG getRequestsWithPriority] SQL error:', err);
       console.error('[DEBUG getRequestsWithPriority] sql:', sql);
       console.error('[DEBUG getRequestsWithPriority] params:', rawParams);
       throw err;
     }
+  }
+
+  private async enrichRequestMeta(requests: any[], userId?: string): Promise<any[]> {
+    if (!requests.length || !userId) return requests;
+    const requestIds = requests.map(r => r.id);
+    const metaRows = await this.requestRepository.query(
+      `WITH request_ids AS (SELECT unnest($1::uuid[]) AS id)
+      SELECT
+        ri.id AS request_id,
+        array_agg(DISTINCT org.name) FILTER (WHERE org.name IS NOT NULL) AS org_names,
+        bool_or(ta.user_id IS NOT NULL) AS is_user_assigned,
+        bool_or(td.organization_id IS NOT NULL AND om.user_id IS NOT NULL) AS is_my_org_delegating
+      FROM request_ids ri
+      JOIN tasks t ON t.request_id = ri.id
+      LEFT JOIN task_delegations td ON td.task_id = t.id AND td.is_accepted = true
+      LEFT JOIN organizations org ON org.id = td.organization_id
+      LEFT JOIN task_assignments ta ON ta.task_id = t.id AND ta.user_id = $2 AND ta.status NOT IN ('WITHDRAWN', 'COMPLETED')
+      LEFT JOIN organization_members om ON om.organization_id = td.organization_id AND om.user_id = $2
+      GROUP BY ri.id`,
+      [requestIds, userId],
+    );
+    const metaMap = new Map(metaRows.map(r => [r.request_id, {
+      delegatedOrgNames: r.org_names || [],
+      isUserAssigned: r.is_user_assigned || false,
+      isMyOrgDelegating: r.is_my_org_delegating || false,
+    }]));
+    return requests.map(r => ({
+      ...r,
+      ...metaMap.get(r.id),
+    }));
   }
 
   // ─── Статусні операції ─────────────────────────────────────────────────
