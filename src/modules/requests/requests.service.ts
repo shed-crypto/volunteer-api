@@ -767,10 +767,15 @@ export class RequestsService {
       isUserAssigned: r.is_user_assigned || false,
       isMyOrgDelegating: r.is_my_org_delegating || false,
     }]));
-    return requests.map(r => ({
-      ...r,
-      ...(metaMap.get(r.id) || {}),
-    }));
+    return requests.map(r => {
+      const meta = metaMap.get(r.id);
+      return {
+        ...r,
+        delegatedOrgNames: meta?.delegatedOrgNames || [],
+        isUserAssigned: meta?.isUserAssigned || false,
+        isMyOrgDelegating: meta?.isMyOrgDelegating || false,
+      };
+    });
   }
 
   // ─── Статусні операції ─────────────────────────────────────────────────
