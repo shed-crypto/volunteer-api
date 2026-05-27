@@ -204,11 +204,12 @@ export class RequestsService {
       })).map(s => s.requestId)
     );
 
-    return requests.map((r) => {
+    const _mapped = requests.map((r) => {
       const obfuscated = this.obfuscateLocation(r, requester);
       const taskCount = taskCounts.get(r.id) ?? 0;
       return { ...obfuscated, isSaved: savedRequestIds.has(r.id), taskCount };
     });
+    return this.enrichRequestMeta(_mapped, requester.id);
   }
 
   // ─── Деталі заявки ────────────────────────────────────────────────────────
