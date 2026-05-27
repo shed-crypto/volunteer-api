@@ -19,6 +19,11 @@ export class FindRequestsDto {
   @IsEnum(RequestUrgency)
   urgency?: RequestUrgency;
 
+  @ApiPropertyOptional({ description: 'Рівень допуску' })
+  @IsOptional()
+  @IsString()
+  requiredClearance?: string;
+
   @ApiPropertyOptional({ description: 'Повнотекстовий пошук' })
   @IsOptional()
   @IsString()
