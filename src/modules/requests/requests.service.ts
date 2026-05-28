@@ -754,6 +754,7 @@ export class RequestsService {
       SELECT
         ri.id AS request_id,
         array_agg(DISTINCT org.name) FILTER (WHERE org.name IS NOT NULL) AS org_names,
+        array_agg(DISTINCT org.name) FILTER (WHERE om.user_id IS NOT NULL AND org.name IS NOT NULL) AS my_org_names,
         bool_or(ta.user_id IS NOT NULL) AS is_user_assigned,
         bool_or(td.organization_id IS NOT NULL AND om.user_id IS NOT NULL) AS is_my_org_delegating
       FROM request_ids ri
@@ -767,6 +768,7 @@ export class RequestsService {
     );
     const metaMap = new Map<string, any>(metaRows.map(r => [r.request_id, {
       delegatedOrgNames: r.org_names || [],
+      myDelegatedOrgNames: r.my_org_names || [],
       isUserAssigned: r.is_user_assigned || false,
       isMyOrgDelegating: r.is_my_org_delegating || false,
     }]));
@@ -775,6 +777,7 @@ export class RequestsService {
       return {
         ...r,
         delegatedOrgNames: meta?.delegatedOrgNames || [],
+        myDelegatedOrgNames: meta?.myDelegatedOrgNames || [],
         isUserAssigned: meta?.isUserAssigned || false,
         isMyOrgDelegating: meta?.isMyOrgDelegating || false,
       };
