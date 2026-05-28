@@ -8,9 +8,9 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { RemoveExifInterceptor } from '@common/interceptors/remove-exif.interceptor';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
-import { existsSync, mkdirSync } from 'fs';
+import { memoryStorage } from 'multer';
+import { extname, join } from 'path';
+import { existsSync, mkdirSync, promises as fs } from 'fs';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
@@ -51,30 +51,9 @@ class CreateMessageDto {
   replyToId?: string;
 }
 
-// ─── Multer: зберігаємо файли чату у uploads/chat ────────────────────────────
-const chatStorage = diskStorage({
-  destination: (_req, _file, cb) => {
-    const dir = 'uploads/chat';
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (_req, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${unique}${extname(file.originalname)}`);
-  },
-});
-
-const avatarStorage = diskStorage({
-  destination: (_req, _file, cb) => {
-    const dir = 'uploads/avatars';
-    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (_req, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${unique}${extname(file.originalname)}`);
-  },
-});
+// ─── Multer: зберігаємо файли чату у пам'яті (значно швидше за diskStorage на Docker) ──
+const chatStorage = memoryStorage();
+const avatarStorage = memoryStorage();
 
 @ApiTags('Чати')
 @ApiBearerAuth()
@@ -124,7 +103,15 @@ export class ChatController {
     @CurrentUser() user: User,
   ): Promise<{ url: string }> {
     if (!file) throw new BadRequestException('File was not provided');
-    const avatarUrl = `/uploads/avatars/${file.filename}`;
+
+    const dir = 'uploads/avatars';
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`;
+
+    // Асинхронний запис з буфера замість diskStorage
+    await fs.writeFile(join(dir, filename), file.buffer);
+
+    const avatarUrl = `/uploads/avatars/${filename}`;
     await this.userRepo.update(user.id, { avatarUrl });
     return { url: avatarUrl };
   }
@@ -182,17 +169,26 @@ export class ChatController {
   @UseInterceptors(
     FileInterceptor('file', {
       storage: chatStorage,
-      limits: { fileSize: 25 * 1024 * 1024 }, // 25 МБ
+      limits: { fileSize: 100 * 1024 * 1024 }, // 100 МБ
     }),
-    RemoveExifInterceptor,
+    // NOTE: RemoveExifInterceptor тимчасово вимкнено для чату через проблеми з sharp на Alpine
+    // RemoveExifInterceptor,
   )
   async uploadChatFile(
     @Param('chatId', ParseUUIDPipe) chatId: string,
     @UploadedFile() file: Express.Multer.File,
   ): Promise<{ url: string; name: string; mimeType: string }> {
-    // NOTE: EXIF видалення та ресайз виконує RemoveExifInterceptor вище
+    if (!file) throw new BadRequestException('File was not provided');
+
+    const dir = 'uploads/chat';
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`;
+
+    // Асинхронний запис з буфера — значно швидше, ніж diskStorage + Docker volume
+    await fs.writeFile(join(dir, filename), file.buffer);
+
     return {
-      url: `/uploads/chat/${file.filename}`,
+      url: `/uploads/chat/${filename}`,
       name: file.originalname,
       mimeType: file.mimetype,
     };

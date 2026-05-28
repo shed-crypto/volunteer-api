@@ -62,7 +62,7 @@ services:
     ports:
       - '${PORT:-3000}:3000'
     volumes:
-      - .:/app
+      - .:/app:cached
       - /app/node_modules
     depends_on:
       postgres:
