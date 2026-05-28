@@ -250,7 +250,7 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('should throw UnauthorizedException if refresh token is invalid', async () => {
+    it('should throw UnauthorizedException and clear refreshTokenHash if refresh token is invalid (token family detection)', async () => {
       const user = createUser({ refreshTokenHash: 'stored_hash' });
       userRepo.findOne.mockResolvedValue(user);
       jest.spyOn(argon2, 'verify').mockResolvedValueOnce(false);
@@ -258,6 +258,11 @@ describe('AuthService', () => {
       await expect(
         service.refreshTokens('user-1', 'wrong-token'),
       ).rejects.toThrow(UnauthorizedException);
+
+      // Token family detection: invalid refresh → kill all sessions
+      expect(userRepo.update).toHaveBeenCalledWith('user-1', {
+        refreshTokenHash: null,
+      });
     });
   });
 
