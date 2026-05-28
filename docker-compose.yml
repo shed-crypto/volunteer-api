@@ -64,6 +64,7 @@ services:
     volumes:
       - .:/app:cached
       - /app/node_modules
+      - uploads_data:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,3 +75,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  uploads_data:
