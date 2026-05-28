@@ -393,9 +393,10 @@ describe('UsersService — admin methods', () => {
 
     await service.recalculateClearance('target-id');
 
+    // 3 active vouches + isEmailVerified=true (createTargetUser наслідує від createAdmin) = FRONTLINE
     expect(mockUserRepo.update).toHaveBeenCalledWith('target-id', {
-      clearanceLevel: ClearanceLevel.INTERNATIONAL,
-      trustScore: 10, // 5 + 5
+      clearanceLevel: ClearanceLevel.FRONTLINE,
+      trustScore: 15, // 5 + 10
     });
   });
 });

@@ -530,6 +530,8 @@ describe('RequestsService', () => {
       where: jest.fn().mockReturnThis(),
       getOne: mockGetOne,
     } as any);
+    // mock enrichRequestMeta query
+    requestRepo.query = jest.fn().mockResolvedValue([]);
 
     const owner = createUser({ id: 'owner-id' });
     const result = await service.findOne('req-xyz', owner as User);

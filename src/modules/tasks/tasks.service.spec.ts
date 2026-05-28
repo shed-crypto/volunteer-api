@@ -796,8 +796,10 @@ describe('TasksService - Delegation', () => {
   });
 
   it('3.2 - acceptDelegation: coordinator accepts delegation', async () => {
-    const delegation = { id: 'del-1', isAccepted: null, task: { request: { id: 'req-1' } } };
-    mockDelegationRepo.findOne.mockResolvedValue(delegation);
+    const delegation = { id: 'del-1', organizationId: 'org-1', isAccepted: null, task: { request: { id: 'req-1' } } };
+    mockDelegationRepo.findOne
+      .mockResolvedValueOnce(delegation)          // first call: find delegation
+      .mockResolvedValueOnce(null);                // second call: no alreadyAccepted exists
     mockDelegationRepo.save.mockResolvedValue({ ...delegation, isAccepted: true });
 
     const coordinator = { id: 'coord-id', systemRole: SystemRole.COORDINATOR } as any;
