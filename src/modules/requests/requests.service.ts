@@ -905,22 +905,32 @@ export class RequestsService {
       return request; // без обфускації
     }
 
-    if (!request.latitude || !request.longitude) return request;
+    // Якщо координати не приховані — не обфускуємо
+    if (!request.isLocationHidden) return request;
 
-    // Детермінований зсув, обчислений з UUID заявки
-    // для консистентності: той самий запит завжди повертає однакові координати
-    const angle = (getSeed(request.id + 'angle') / 0x7fffffff) * 2 * Math.PI;
-    const offsetMeters = (getSeed(request.id + 'offset') / 0x7fffffff) * OBFUSCATION_RADIUS_M;
+    // Конвертуємо latitude/longitude в числа (PostgreSQL decimal повертається як string)
+    const lat = Number(request.latitude);
+    const lng = Number(request.longitude);
+    if (!lat || !lng) return request;
+
+    // Детермінований зсув, обчислений з UUID заявки та серверної криптографічної солі (SERVER_SECRET_SALT)
+    // Сіль зберігається в .env і ніколи не передається клієнту,
+    // що унеможливлює реверс-інжиніринг реальних координат
+    const angle = (getSeed(request.id + 'angle' + process.env.SERVER_SECRET_SALT) / 0x7fffffff) * 2 * Math.PI;
+    const offsetMeters = (getSeed(request.id + 'offset' + process.env.SERVER_SECRET_SALT) / 0x7fffffff) * OBFUSCATION_RADIUS_M;
     const earthRadius = 6371000;
 
     const latOffset = (offsetMeters / earthRadius) * (180 / Math.PI);
-    const lngOffset =
-      (offsetMeters / earthRadius) * (180 / Math.PI) / Math.cos((request.latitude * Math.PI) / 180);
+    const cosLat = Math.cos((lat * Math.PI) / 180);
+    // Захист від ділення на 0 біля полюсів
+    const lngOffset = cosLat !== 0
+      ? (offsetMeters / earthRadius) * (180 / Math.PI) / cosLat
+      : 0;
 
     return {
       ...request,
-      latitude: request.latitude + Math.cos(angle) * latOffset,
-      longitude: request.longitude + Math.sin(angle) * lngOffset,
+      latitude: lat + Math.cos(angle) * latOffset,
+      longitude: lng + Math.sin(angle) * lngOffset,
     };
   }
 

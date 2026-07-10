@@ -21,6 +21,27 @@ import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import * as argon2 from 'argon2';
 import * as path from 'path';
+import { config } from 'dotenv';
+
+import { User } from '../../modules/users/entities/user.entity';
+import { Vehicle } from '../../modules/users/entities/vehicle.entity';
+import { TrustVouch } from '../../modules/users/entities/trust-vouch.entity';
+import { Organization } from '../../modules/organizations/entities/organization.entity';
+import { OrganizationMember } from '../../modules/organizations/entities/organization-member.entity';
+import { Hub } from '../../modules/organizations/entities/hub.entity';
+import { OrganizationSettings } from '../../modules/organizations/entities/organization-settings.entity';
+import { OrganizationJoinRequest } from '../../modules/organizations/entities/organization-join-request.entity';
+import { Request } from '../../modules/requests/entities/request.entity';
+import { Task } from '../../modules/tasks/entities/task.entity';
+import { TaskAssignment } from '../../modules/tasks/entities/task-assignment.entity';
+import { TaskDelegation } from '../../modules/tasks/entities/task-delegation.entity';
+import { Message } from '../../modules/chat/entities/message.entity';
+import { Chat } from '../../modules/chat/entities/chat.entity';
+import { TaskReport } from '../../modules/task-reports/entities/task-report.entity';
+import { SavedRequest } from '../../modules/requests/entities/saved-request.entity';
+import { AccessLog } from '../../modules/requests/entities/access-log.entity';
+
+config();
 
 const AppDataSource = new DataSource({
   type: 'postgres',
@@ -29,7 +50,14 @@ const AppDataSource = new DataSource({
   username: process.env.DB_USER || 'volunteer',
   password: process.env.DB_PASSWORD || 'volunteer_pass',
   database: process.env.DB_NAME || 'volunteer_help',
-  entities: [path.join(__dirname, '../../modules/**/*.entity{.ts,.js}')],
+  entities: [
+    User, Vehicle, TrustVouch,
+    Organization, OrganizationMember, Hub, OrganizationSettings, OrganizationJoinRequest,
+    Request, Task, TaskAssignment, TaskDelegation,
+    Message, Chat,
+    TaskReport,
+    SavedRequest, AccessLog,
+  ],
   synchronize: true,
 });
 
@@ -556,10 +584,7 @@ async function seed() {
   await taskReportRepo.save({
     taskId: task2_1.id,
     userId: vol1.id,
-    comment: 'Доставку завершено. Вантаж прийнято військовими о 18:00. Фото звіту додаю.',
-    attachments: [
-      { url: 'https://example.com/reports/report1.jpg', type: 'image/jpeg', name: 'report1.jpg' },
-    ],
+    comment: 'Доставку завершено. Вантаж прийнято військовими о 18:00.',
     isVerified: true,
     verifiedById: coord1.id,
     verifiedAt: new Date(Date.now() - 172700000),
